@@ -31,6 +31,9 @@ public:
     static QList<SidebarLink> sidebarLinks();
     static QList<SidebarLink> sidebarSeeAlso();
 
+signals:
+    void soundRequested();
+
 protected:
     // Clicking a swatch frame applies that scheme.
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -52,6 +55,8 @@ private:
     QPixmap swatchPixmap(const Scheme &s) const;
     void    applyScheme(int index);
     void    refreshHighlight();
+    void    chooseWallpaper();
+    void    configureLockScreen();
 
     QList<Scheme>         m_schemes;
     QString               m_currentId;

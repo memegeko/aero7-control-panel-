@@ -32,7 +32,7 @@ so it can later be copied directly into the Aero7 GitHub wiki.
 
 | Aero7 name | Original KDE name | Original KDE module/backend | State |
 | --- | --- | --- | --- |
-| Personalization | Global Theme | `kcm_lookandfeel` / Aero7 Personalization | Aero7 partial |
+| Personalization | Global Theme | Plasma configuration / Aero7 Personalization | Aero7 native |
 | Window Color | Colors | `kcm_colors` | KDE bridge |
 | Application Appearance | Application Style | `kcm_style` | KDE bridge |
 | Desktop Style | Plasma Style | `kcm_desktoptheme` | KDE bridge |
@@ -93,14 +93,14 @@ so it can later be copied directly into the Aero7 GitHub wiki.
 
 | Aero7 name | Original KDE name | Original KDE module/backend | State |
 | --- | --- | --- | --- |
-| Sound | Sound | `kcm_pulseaudio` / Aero7 Sound dialog | Aero7 partial |
+| Sound | Sound | PipeWire/PulseAudio / Aero7 Sound dialog | Aero7 native |
 | System Sounds | System Sounds | `kcm_soundtheme` | KDE bridge |
 
 ## Network
 
 | Aero7 name | Original KDE name | Original KDE module/backend | State |
 | --- | --- | --- | --- |
-| Network and Sharing Center | Connections | `kcm_networkmanagement` / Aero7 network page | Aero7 partial |
+| Network and Sharing Center | Connections | NetworkManager / Aero7 network page | Aero7 native |
 | Change Adapter Settings | Connections | `kcm_networkmanagement` | KDE bridge |
 | Proxy Settings | Proxy | `kcm_proxy` | KDE bridge |
 | Connection Preferences | Connection Preferences | `kcm_netpref` | KDE bridge |
@@ -109,7 +109,7 @@ so it can later be copied directly into the Aero7 GitHub wiki.
 
 | Aero7 name | Original KDE name | Original KDE module/backend | State |
 | --- | --- | --- | --- |
-| Power Options | Power Management | `kcm_powerdevilprofilesconfig` / Aero7 Power Options | Aero7 partial |
+| Power Options | Power Management | power-profiles-daemon + UPower / Aero7 Power Options | Aero7 native |
 | Advanced Power Settings | Power Management | `kcm_powerdevilprofilesconfig` | KDE bridge |
 | Battery and Energy | Energy | `kcm_mobile_power` | KDE bridge |
 
@@ -117,7 +117,7 @@ so it can later be copied directly into the Aero7 GitHub wiki.
 
 | Aero7 name | Original KDE name | Original KDE module/backend | State |
 | --- | --- | --- | --- |
-| User Accounts | Users | `kcm_users` / Aero7 User Accounts | Aero7 partial |
+| User Accounts | Users | Linux account tools + polkit / Aero7 User Accounts | Aero7 native |
 | Online Accounts | Online Accounts | `kcm_kaccounts` | KDE bridge |
 
 ## Region and language
@@ -184,11 +184,12 @@ so it can later be copied directly into the Aero7 GitHub wiki.
 
 ## Replacement priorities
 
-The KDE bridges are intentional compatibility layers, not the final backend
-architecture. Native replacements should be introduced incrementally and only
-when they preserve the current behavior and error handling. Likely service APIs
-include NetworkManager D-Bus, PipeWire/WirePlumber, KScreen, PowerDevil/UPower,
-BlueZ, AccountsService, CUPS, `ufw`, and the Aero7 package/update backend.
+The remaining KDE bridges are intentional compatibility layers for settings
+whose behavior is owned by Plasma. The five former partial pages now use
+NetworkManager, PipeWire/PulseAudio, UPower, power-profiles-daemon, Plasma
+configuration files, and authenticated Linux account tools for their main
+workflows. Advanced connection editing and PowerDevil policy remain available
+as individually labelled compatibility actions.
 
 When a bridge becomes native, update its one `SettingDefinition` entry. The
 public label, search result, hub row, original KDE trace, and tests then remain

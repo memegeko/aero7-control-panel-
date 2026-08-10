@@ -56,9 +56,12 @@ Current functionality includes:
 - Windows Update-style page backed by real `pacman` update checks
 - Installed update history read from `pacman.log`
 - Programs and Features package listing and removal
-- Network and Sharing Center overview
+- Network and Sharing Center with live NetworkManager status, connection
+  activation and diagnostics
 - Firewall status, enable/disable, allow-rule and reset controls through `ufw`
-- Power Options
+- Native user-account management, wallpaper and lock settings
+- PipeWire/PulseAudio device, volume, mute and sound-theme controls
+- Power profiles plus live UPower battery status
 - Windows Experience Index-style performance benchmark
 
 Aero7-specific pages and integrations will be added as development continues.
@@ -105,15 +108,18 @@ Aero7 desktop.
 | `pkexec` | Privileged package-management actions |
 | `pacman` | Updates, installed packages, and package removal |
 | `ufw` | Firewall status and rules |
+| `nmcli` | NetworkManager connections and diagnostics |
+| `pactl` / `paplay` | PipeWire/PulseAudio device and sound control |
+| `accountsservice` / `shadow` | Local account discovery and management |
+| `upower` / `power-profiles-daemon` | Battery state and power profiles |
 | `kcmshell6` | Opens an individual KDE setting used as a compatibility backend |
 
 ## Roadmap
 
 Planned Aero7 expansion areas include:
 
-- Aero7 appearance, theme, sound, and desktop controls
 - Replace KDE compatibility bridges with direct Linux/KDE service APIs where practical
-- Hardware, devices, networking, users, storage, and security pages
+- Hardware, storage, and advanced security pages
 - Update, repair, recovery, and Aero7 repository management
 - More native Aero7 controls for advanced settings
 - Improved privilege separation and clear confirmation for system changes

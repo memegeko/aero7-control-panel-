@@ -61,6 +61,14 @@ private:
         QString description;   // the grey line under the name
         bool    additional;    // true -> lives under "Show additional plans"
     };
+    struct BatteryInfo {
+        bool available = false;
+        bool onBattery = false;
+        double percentage = 0.0;
+        QString state;
+        QString remaining;
+        QString model;
+    };
 
     // Query PPD over the system bus. Returns the profiles it advertises (in the
     // daemon's own low-to-high order) and the active one. `ok` is false when PPD is
@@ -68,6 +76,7 @@ private:
     QStringList availableProfiles(bool &ok) const;
     QString     activeProfile() const;
     void        setActiveProfile(const QString &profileId);
+    BatteryInfo batteryInfo() const;
 
     // Build the visual plan list and the additional-plans expander.
     void buildPlans(const QStringList &profiles);

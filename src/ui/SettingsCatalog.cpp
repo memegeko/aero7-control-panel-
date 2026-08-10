@@ -68,7 +68,7 @@ const QList<SettingDefinition> &all()
         page("personalization", "Personalization", "Global Theme",
              PageId::Personalization, SettingsSection::Appearance,
              "Choose the Aero7 theme and desktop appearance.", "preferences-desktop-theme",
-             ReplacementStatus::Partial, "kcm_lookandfeel"),
+             ReplacementStatus::Native, "kcm_lookandfeel"),
         kde("colors", "Window Color", "Colors", "kcm_colors", SettingsSection::Appearance,
             "Choose window and application colors.", "preferences-desktop-color"),
         kde("application-style", "Application Appearance", "Application Style", "kcm_style", SettingsSection::Appearance,
@@ -151,14 +151,14 @@ const QList<SettingDefinition> &all()
         // Sound
         applet("sound", "Sound", "Sound", "sound", SettingsSection::Sound,
                "Manage playback, recording, sound schemes and communications.", "preferences-desktop-sound",
-               ReplacementStatus::Partial, "kcm_pulseaudio"),
+               ReplacementStatus::Native, "kcm_pulseaudio"),
         kde("sound-theme", "System Sounds", "System Sounds", "kcm_soundtheme", SettingsSection::Sound,
             "Choose the notification sound theme.", "preferences-desktop-sound"),
 
         // Network
         page("network-status", "Network and Sharing Center", "Connections", PageId::NetworkSharing,
              SettingsSection::Network, "View active connections and network information.", "preferences-system-network",
-             ReplacementStatus::Partial, "kcm_networkmanagement"),
+             ReplacementStatus::Native, "kcm_networkmanagement"),
         kde("network-connections", "Change Adapter Settings", "Connections", "kcm_networkmanagement", SettingsSection::Network,
             "Create and edit wired, wireless and VPN connections.", "network-wired"),
         kde("proxy", "Proxy Settings", "Proxy", "kcm_proxy", SettingsSection::Network,
@@ -169,7 +169,7 @@ const QList<SettingDefinition> &all()
         // Power
         page("power", "Power Options", "Power Management", PageId::PowerOptions,
              SettingsSection::Power, "Choose a power plan and energy profile.", "preferences-system-power-management",
-             ReplacementStatus::Partial, "kcm_powerdevilprofilesconfig"),
+             ReplacementStatus::Native, "kcm_powerdevilprofilesconfig"),
         kde("power-details", "Advanced Power Settings", "Power Management", "kcm_powerdevilprofilesconfig", SettingsSection::Power,
             "Configure sleep, screen energy, lid and power-button behavior.", "preferences-system-power-management"),
         kde("mobile-power", "Battery and Energy", "Energy", "kcm_mobile_power", SettingsSection::Power,
@@ -178,7 +178,7 @@ const QList<SettingDefinition> &all()
         // Accounts
         page("accounts", "User Accounts", "Users", PageId::UserAccounts,
              SettingsSection::Accounts, "View and manage local user accounts.", "system-users",
-             ReplacementStatus::Partial, "kcm_users"),
+             ReplacementStatus::Native, "kcm_users"),
         kde("online-accounts", "Online Accounts", "Online Accounts", "kcm_kaccounts", SettingsSection::Accounts,
             "Connect supported online services to the desktop.", "preferences-online-accounts"),
         // Region and language

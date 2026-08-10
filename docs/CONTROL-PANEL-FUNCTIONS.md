@@ -16,21 +16,21 @@ not pretend to be working controls.
 | Linux Update | Check/install updates | Uses the existing Aero7 `pacman` update workflow |
 | Programs and Features | Uninstall/repair | Uses the existing package-management workflow and confirmations |
 | Installed Updates | Installed update list | Reads package history; it no longer claims a single historical update can be uninstalled safely |
-| Network and Sharing Center | Connection links | Routes to Network Settings rather than acting as decorative text |
+| Network and Sharing Center | Status, connect and diagnostics | Reads live NetworkManager data, activates saved connections with `nmcli`, and shows address, gateway and routing diagnostics; the advanced editor remains available separately |
 | Firewall | Turn on/off | Runs the corresponding `ufw` command through polkit |
 | Firewall | Allow a port or service | Validates a user-provided `ufw allow` rule and applies it through polkit |
 | Firewall | Notification settings | Configures UFW event logging from Off through Full and explains that UFW does not provide per-program popups |
 | Firewall | Restore defaults | Confirms the destructive reset before running `ufw --force reset` |
 | Action Center | Security/account/network/backup tasks | Routes to the appropriate internal page or hub |
-| Power Options | Advanced plan links | Opens only `kcm_powerdevilprofilesconfig`, the original KDE Power Management module |
+| Power Options | Plans and battery | Changes real power-profiles-daemon profiles and reads battery, charging and remaining-time data from UPower; advanced lid/sleep policy remains a separate PowerDevil bridge |
 | Personalization | Color scheme tiles | Applies an installed color scheme; the UI now calls these color schemes rather than claiming to change a complete theme |
-| Personalization | Background, color, sounds, lock screen | Opens the matching individual KCM or Aero7 dialog |
+| Personalization | Background, color, sounds, lock screen | Applies wallpaper and color schemes directly, opens the native Aero7 Sound dialog, and writes the real Plasma lock timeout/resume settings |
 | User Accounts | Change password | Opens `passwd` in the configured terminal, with a KDE Users fallback |
 | User Accounts | Change picture | Writes the user's standard `~/.face.icon` image |
 | User Accounts | Change display name | Uses `usermod -c` through polkit after confirmation |
-| User Accounts | Manage users/account type | Opens only the original KDE Users module (`kcm_users`) |
+| User Accounts | Manage users/account type | Creates, removes and changes local accounts through authenticated Linux account tools; account removal preserves the home folder |
 | Date and Time | Date, time, time zone and Internet time | Uses the existing native dialog and authenticated system tools |
-| Sound | Devices/defaults/test/browse/schemes | Uses PipeWire/PulseAudio tools where available and stores cosmetic Aero7 scheme preferences |
+| Sound | Devices/defaults/volume/mute/themes | Uses PipeWire/PulseAudio for live devices and properties, and writes Plasma's real sound-theme configuration; unsupported call ducking is labelled honestly instead of saving a fake preference |
 | Performance | Rate/rerun/details | Uses the existing Aero7 benchmark workflow |
 | Fonts | Font list/preview | Uses the installed font database and `kfontview` |
 | Ease of Access | Accessibility tasks | Uses truthfully named configuration links for magnifier, screen reader, virtual keyboard, contrast and input |

@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QString>
 #include <QStringList>
+#include <functional>
 #include "PageId.h"
 
 class QScrollArea;
@@ -32,6 +33,9 @@ private:
         QString networkName;      // active network profile name (e.g. "Network")
         QString accessType;       // "Internet" / "No network access"
         QString connectionName;   // "Local Area Connection" / "Wireless Network Connection"
+        QString interfaceName;    // NetworkManager device id (e.g. "enp1s0")
+        QString ipv4Address;
+        QString gateway;
         bool    wireless = false; // default route is over a wireless interface
         bool    connected = false;// a default route exists
     };
@@ -50,5 +54,8 @@ private:
     // Adds one "Change your networking settings" task: icon + blue title link
     // with a grey description line beneath.
     void addTask(QVBoxLayout *into, const QStringList &iconNames,
-                 const QString &title, const QString &description);
+                 const QString &title, const QString &description,
+                 std::function<void()> action);
+    void connectToNetwork();
+    void showDiagnostics();
 };

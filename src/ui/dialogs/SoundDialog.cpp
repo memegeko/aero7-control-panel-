@@ -37,6 +37,9 @@
 #include <QPixmap>
 #include <QIcon>
 #include <QPolygonF>
+#include <QSlider>
+#include <QFormLayout>
+#include <QSet>
 
 // Helpers
 namespace {
@@ -260,9 +263,8 @@ QWidget *SoundDialog::buildDeviceTab(DeviceList &dl, bool sinks,
 
     dl.configureBtn = new QPushButton(QStringLiteral("Configure"));
     dl.configureBtn->setCursor(Qt::PointingHandCursor);
-    connect(dl.configureBtn, &QPushButton::clicked, this, [this]() {
-        launchDetached(this, {"kcmshell6", "kcm_pulseaudio"});
-    });
+    connect(dl.configureBtn, &QPushButton::clicked, this,
+            [this, &dl]() { showProperties(dl); });
     btnRow->addWidget(dl.configureBtn);
     btnRow->addStretch(1);
 
@@ -283,19 +285,8 @@ QWidget *SoundDialog::buildDeviceTab(DeviceList &dl, bool sinks,
 
     dl.propertiesBtn = new QPushButton(QStringLiteral("Properties"));
     dl.propertiesBtn->setCursor(Qt::PointingHandCursor);
-    connect(dl.propertiesBtn, &QPushButton::clicked, this, [this, &dl]() {
-        if (dl.selected < 0 || dl.selected >= dl.devices.size())
-            return;
-        const Device &d = dl.devices[dl.selected];
-        QMessageBox::information(this, QStringLiteral("%1 Properties")
-                                     .arg(d.description),
-            QStringLiteral("%1\n%2\n\nVolume: %3%%4")
-                .arg(d.description)
-                .arg(d.cardName.isEmpty() ? QStringLiteral("Audio Device")
-                                          : d.cardName)
-                .arg(d.volumePercent)
-                .arg(d.muted ? QStringLiteral("  (muted)") : QString()));
-    });
+    connect(dl.propertiesBtn, &QPushButton::clicked, this,
+            [this, &dl]() { showProperties(dl); });
     btnRow->addWidget(dl.propertiesBtn);
 
     v->addLayout(btnRow);
@@ -443,6 +434,73 @@ void SoundDialog::applyDefault(DeviceList &dl)
     updateMonitors();   // the meter now belongs to the new default device
 }
 
+void SoundDialog::showProperties(DeviceList &dl)
+{
+    if (dl.selected < 0 || dl.selected >= dl.devices.size())
+        return;
+    const Device device = dl.devices[dl.selected];
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("%1 Properties")
+                              .arg(device.description.isEmpty()
+                                       ? device.name : device.description));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *description = new QLabel(
+        QStringLiteral("%1\n%2")
+            .arg(device.description.isEmpty() ? device.name : device.description,
+                 device.cardName.isEmpty() ? QStringLiteral("Audio Device")
+                                           : device.cardName));
+    layout->addWidget(description);
+
+    auto *form = new QFormLayout;
+    auto *volume = new QSlider(Qt::Horizontal);
+    volume->setRange(0, 150);
+    volume->setValue(qBound(0, device.volumePercent, 150));
+    auto *volumeRow = new QWidget;
+    auto *volumeLayout = new QHBoxLayout(volumeRow);
+    volumeLayout->setContentsMargins(0, 0, 0, 0);
+    auto *percent = new QLabel(QStringLiteral("%1%").arg(volume->value()));
+    connect(volume, &QSlider::valueChanged, percent,
+            [percent](int value) {
+                percent->setText(QStringLiteral("%1%").arg(value));
+            });
+    volumeLayout->addWidget(volume, 1);
+    volumeLayout->addWidget(percent);
+    form->addRow(QStringLiteral("Volume:"), volumeRow);
+
+    auto *mute = new QCheckBox(QStringLiteral("Mute this device"));
+    mute->setChecked(device.muted);
+    form->addRow(QString(), mute);
+    layout->addLayout(form);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const QString kind = dl.sinks ? QStringLiteral("sink")
+                                   : QStringLiteral("source");
+    runTool(QStringLiteral("pactl"),
+            {QStringLiteral("set-%1-volume").arg(kind), device.name,
+             QStringLiteral("%1%").arg(volume->value())});
+    runTool(QStringLiteral("pactl"),
+            {QStringLiteral("set-%1-mute").arg(kind), device.name,
+             mute->isChecked() ? QStringLiteral("1") : QStringLiteral("0")});
+    dl.devices = gatherDevices(dl.sinks);
+    dl.defaultName = defaultDevice(dl.sinks);
+    rebuildRows(dl);
+    int selected = 0;
+    for (int i = 0; i < dl.devices.size(); ++i)
+        if (dl.devices[i].name == device.name)
+            selected = i;
+    if (!dl.devices.isEmpty())
+        selectRow(dl, selected);
+    updateMonitors();
+}
+
 // Live level metering
 void SoundDialog::startMonitor(DeviceList &dl)
 {
@@ -503,8 +561,6 @@ QWidget *SoundDialog::buildSoundsTab()
     v->setContentsMargins(14, 14, 14, 12);
     v->setSpacing(6);
 
-    QSettings s;
-
     auto para = [&](const QString &t) {
         auto *l = new QLabel(t);
         QFont f = l->font();
@@ -515,9 +571,9 @@ QWidget *SoundDialog::buildSoundsTab()
         return l;
     };
 
-    para(Branding::brand("A sound theme is a set of sounds applied to events in "
-                         "Linux. You can select an existing scheme or save one "
-                         "you have modified."));
+    para(QStringLiteral("A sound theme supplies the notification sounds used by "
+                        "Aero7 and Plasma applications. Changes are written to "
+                        "the real Plasma sound-theme setting."));
 
     auto *schemeLabel = new QLabel(QStringLiteral("Sound Scheme:"));
     { QFont f = schemeLabel->font(); f.setPointSize(9); schemeLabel->setFont(f); }
@@ -526,49 +582,46 @@ QWidget *SoundDialog::buildSoundsTab()
     auto *schemeRow = new QHBoxLayout;
     schemeRow->setSpacing(8);
     auto *scheme = new QComboBox;
-    scheme->addItems({ Branding::brand("Linux Default"),
-                       QStringLiteral("No Sounds") });
-    scheme->addItems(s.value(QStringLiteral("sound/customSchemes")).toStringList());
-    const QString selectedScheme =
-        s.value(QStringLiteral("sound/schemeName")).toString();
-    const int selectedIndex = scheme->findText(selectedScheme);
-    scheme->setCurrentIndex(selectedIndex >= 0
-        ? selectedIndex : s.value(QStringLiteral("sound/scheme"), 0).toInt());
     scheme->setObjectName(QStringLiteral("soundScheme"));
-    schemeRow->addWidget(scheme, 1);
-    auto *saveAs = new QPushButton(QStringLiteral("Save As…"));
-    schemeRow->addWidget(saveAs);
-    auto *del = new QPushButton(QStringLiteral("Delete"));
-    del->setEnabled(scheme->currentIndex() > 1);
-    schemeRow->addWidget(del);
-    connect(saveAs, &QPushButton::clicked, this, [this, scheme, del]() {
-        bool ok = false;
-        const QString name = QInputDialog::getText(
-            this, "Save Sound Scheme", "Sound scheme name:",
-            QLineEdit::Normal, {}, &ok).trimmed();
-        if (!ok || name.isEmpty())
-            return;
-        int index = scheme->findText(name);
-        if (index < 0) {
-            scheme->addItem(name);
-            index = scheme->count() - 1;
+    scheme->addItem(QStringLiteral("No Sounds"), QString());
+
+    QSet<QString> seenThemes;
+    for (const QString &base :
+         QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
+        QDir sounds(base + QStringLiteral("/sounds"));
+        for (const QString &id :
+             sounds.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+            if (seenThemes.contains(id)
+                || !QFile::exists(sounds.filePath(id + QStringLiteral("/index.theme"))))
+                continue;
+            seenThemes.insert(id);
+            QSettings metadata(
+                sounds.filePath(id + QStringLiteral("/index.theme")),
+                QSettings::IniFormat);
+            const QString name =
+                metadata.value(QStringLiteral("Sound Theme/Name"), id).toString();
+            scheme->addItem(name, id);
         }
-        scheme->setCurrentIndex(index);
-        del->setEnabled(true);
-    });
-    connect(del, &QPushButton::clicked, this, [scheme, del]() {
-        if (scheme->currentIndex() > 1)
-            scheme->removeItem(scheme->currentIndex());
-        del->setEnabled(scheme->currentIndex() > 1);
-    });
-    connect(scheme, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            del, [del](int index) { del->setEnabled(index > 1); });
+    }
+
+    QSettings kdeGlobals(
+        QDir::homePath() + QStringLiteral("/.config/kdeglobals"),
+        QSettings::IniFormat);
+    kdeGlobals.beginGroup(QStringLiteral("Sounds"));
+    const bool soundsEnabled =
+        kdeGlobals.value(QStringLiteral("Enable"), true).toBool();
+    const QString selectedTheme =
+        kdeGlobals.value(QStringLiteral("Theme"), QStringLiteral("freedesktop"))
+            .toString();
+    kdeGlobals.endGroup();
+    const int selectedIndex = soundsEnabled
+        ? scheme->findData(selectedTheme) : 0;
+    scheme->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    schemeRow->addWidget(scheme, 1);
     v->addLayout(schemeRow);
     v->addSpacing(2);
 
-    para(QStringLiteral("To change sounds, click a program event in the "
-                        "following list and then select a sound to apply. You "
-                        "can save the changes as a new sound scheme."));
+    para(QStringLiteral("Select a sound below and click Test to preview it."));
 
     auto *eventsLabel = new QLabel(QStringLiteral("Program Events:"));
     { QFont f = eventsLabel->font(); f.setPointSize(9); eventsLabel->setFont(f); }
@@ -576,78 +629,72 @@ QWidget *SoundDialog::buildSoundsTab()
 
     auto *tree = new QTreeWidget;
     tree->setHeaderHidden(true);
-    tree->setRootIsDecorated(true);
+    tree->setRootIsDecorated(false);
     tree->setStyleSheet("QTreeWidget { border: 1px solid #A0A0A0; }");
-    auto *rootItem = new QTreeWidgetItem(tree, { Branding::os() });
-    rootItem->setIcon(0, themeIcon({"computer", "start-here"}));
-    const QStringList events = {
-        "Asterisk", "Close Program", "Critical Battery Alarm", "Critical Stop",
-        "Default Beep", "Desktop Mail Notification", "Device Connect",
-        "Device Disconnect", "Device Failed to Connect", "Empty Recycle Bin",
-        "Exclamation", "Low Battery Alarm", "New Fax Sound",
-        "Notification", "System Notification", "Windows Logoff",
-    };
-    const QIcon evIcon = themeIcon({"audio-volume-high", "audio-speakers"});
-    for (const QString &e : events) {
-        auto *it = new QTreeWidgetItem(rootItem, { e });
-        it->setIcon(0, evIcon);
-    }
-    rootItem->setExpanded(true);
     v->addWidget(tree, 1);
 
-    auto *startup = new QCheckBox(Branding::brand("Play Linux Startup sound"));
-    { QFont f = startup->font(); f.setPointSize(9); startup->setFont(f); }
-    startup->setChecked(
-        s.value(QStringLiteral("sound/startupSound"), true).toBool());
-    startup->setObjectName(QStringLiteral("startupSound"));
-    v->addWidget(startup);
-
-    auto *soundsLabel = new QLabel(QStringLiteral("Sounds:"));
-    { QFont f = soundsLabel->font(); f.setPointSize(9); soundsLabel->setFont(f); }
-    v->addWidget(soundsLabel);
+    auto populateSounds = [scheme, tree]() {
+        tree->clear();
+        const QString id = scheme->currentData().toString();
+        if (id.isEmpty())
+            return;
+        QSet<QString> paths;
+        for (const QString &base :
+             QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
+            const QDir theme(base + QStringLiteral("/sounds/") + id);
+            const QStringList files = theme.entryList(
+                {QStringLiteral("*.oga"), QStringLiteral("*.ogg"),
+                 QStringLiteral("*.wav"), QStringLiteral("*.flac")},
+                QDir::Files, QDir::Name);
+            for (const QString &file : files)
+                paths.insert(theme.filePath(file));
+            const QDir stereo(theme.filePath(QStringLiteral("stereo")));
+            for (const QString &file : stereo.entryList(
+                     {QStringLiteral("*.oga"), QStringLiteral("*.ogg"),
+                      QStringLiteral("*.wav"), QStringLiteral("*.flac")},
+                     QDir::Files, QDir::Name))
+                paths.insert(stereo.filePath(file));
+        }
+        QStringList ordered = paths.values();
+        ordered.sort(Qt::CaseInsensitive);
+        const QIcon icon = themeIcon({"audio-volume-high", "audio-speakers"});
+        for (const QString &path : ordered) {
+            auto *item = new QTreeWidgetItem(
+                tree, {QFileInfo(path).completeBaseName()});
+            item->setIcon(0, icon);
+            item->setData(0, Qt::UserRole, path);
+        }
+        if (tree->topLevelItemCount())
+            tree->setCurrentItem(tree->topLevelItem(0));
+    };
+    connect(scheme, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [populateSounds](int) { populateSounds(); });
+    populateSounds();
 
     auto *soundsRow = new QHBoxLayout;
-    soundsRow->setSpacing(8);
-    auto *soundsCombo = new QComboBox;
-    soundsCombo->addItem(QStringLiteral("(None)"));
-    for (const QString &path : {
-             QStringLiteral("/usr/share/sounds/freedesktop/stereo/bell.oga"),
-             QStringLiteral("/usr/share/sounds/freedesktop/stereo/message.oga"),
-             QStringLiteral("/usr/share/sounds/alsa/Front_Center.wav")}) {
-        if (QFile::exists(path))
-            soundsCombo->addItem(QFileInfo(path).completeBaseName(), path);
-    }
-    soundsRow->addWidget(soundsCombo, 1);
+    soundsRow->addStretch(1);
     auto *test = new QPushButton(QStringLiteral("Test"));
     test->setIcon(themeIcon({"media-playback-start"}));
-    connect(test, &QPushButton::clicked, this, [this, soundsCombo]() {
-        const QString path = soundsCombo->currentData().toString();
+    connect(test, &QPushButton::clicked, this, [this, tree]() {
+        const QString path = tree->currentItem()
+            ? tree->currentItem()->data(0, Qt::UserRole).toString() : QString();
         if (!path.isEmpty())
             launchDetached(this, {QStringLiteral("paplay"), path});
     });
     soundsRow->addWidget(test);
-    auto *browse = new QPushButton(QStringLiteral("Browse…"));
-    connect(browse, &QPushButton::clicked, this, [this, soundsCombo]() {
-        const QString path = QFileDialog::getOpenFileName(
-            this, "Choose a sound", QDir::homePath(),
-            "Audio files (*.oga *.ogg *.wav *.flac);;All files (*)");
-        if (path.isEmpty())
-            return;
-        soundsCombo->addItem(QFileInfo(path).completeBaseName(), path);
-        soundsCombo->setCurrentIndex(soundsCombo->count() - 1);
-    });
-    soundsRow->addWidget(browse);
     v->addLayout(soundsRow);
 
-    // Persist the cosmetic choices when the dialog is accepted.
-    auto save = [scheme, startup]() {
-        QSettings st;
-        st.setValue(QStringLiteral("sound/schemeName"), scheme->currentText());
-        QStringList custom;
-        for (int i = 2; i < scheme->count(); ++i)
-            custom.append(scheme->itemText(i));
-        st.setValue(QStringLiteral("sound/customSchemes"), custom);
-        st.setValue(QStringLiteral("sound/startupSound"), startup->isChecked());
+    auto save = [scheme]() {
+        QSettings settings(
+            QDir::homePath() + QStringLiteral("/.config/kdeglobals"),
+            QSettings::IniFormat);
+        settings.beginGroup(QStringLiteral("Sounds"));
+        const QString id = scheme->currentData().toString();
+        settings.setValue(QStringLiteral("Enable"), !id.isEmpty());
+        if (!id.isEmpty())
+            settings.setValue(QStringLiteral("Theme"), id);
+        settings.endGroup();
+        settings.sync();
     };
     connect(this, &QDialog::accepted, this, save);
     connect(this, &SoundDialog::applyRequested, this, save);
@@ -673,9 +720,9 @@ QWidget *SoundDialog::buildCommunicationsTab()
                         .pixmap(32, 32));
     icon->setStyleSheet("background: transparent;");
     top->addWidget(icon, 0, Qt::AlignTop);
-    auto *intro = new QLabel(Branding::brand(
-        "Linux can automatically adjust the volume of different sounds when you "
-        "are using your PC to place or receive telephone calls."));
+    auto *intro = new QLabel(
+        QStringLiteral("Communications applications may adjust their own audio "
+                       "while a call is active."));
     { QFont f = intro->font(); f.setPointSize(9); intro->setFont(f); }
     intro->setWordWrap(true);
     top->addWidget(intro, 1);
@@ -683,38 +730,28 @@ QWidget *SoundDialog::buildCommunicationsTab()
     v->addSpacing(16);
 
     auto *prompt = new QLabel(
-        Branding::brand("When Linux detects communications activity:"));
+        QStringLiteral("When Aero7 detects communications activity:"));
     { QFont f = prompt->font(); f.setPointSize(9); prompt->setFont(f); }
     v->addWidget(prompt);
     v->addSpacing(8);
 
-    auto *group = new QButtonGroup(this);
-    const QStringList options = {
-        QStringLiteral("Mute all other sounds"),
-        QStringLiteral("Reduce the volume of other sounds by 80%"),
-        QStringLiteral("Reduce the volume of other sounds by 50%"),
-        QStringLiteral("Do nothing"),
-    };
-    QSettings s;
-    const int chosen = s.value(QStringLiteral("sound/communications"), 1).toInt();
-    for (int i = 0; i < options.size(); ++i) {
-        auto *r = new QRadioButton(options[i]);
-        { QFont f = r->font(); f.setPointSize(9); r->setFont(f); }
-        r->setChecked(i == chosen);
-        group->addButton(r, i);
-        auto *row = new QHBoxLayout;
-        row->setContentsMargins(14, 0, 0, 0);
-        row->addWidget(r);
-        v->addLayout(row);
-        v->addSpacing(6);
-    }
+    auto *choice = new QRadioButton(QStringLiteral("Do nothing"));
+    choice->setChecked(true);
+    choice->setEnabled(false);
+    v->addWidget(choice);
+    v->addSpacing(12);
 
-    auto save = [group]() {
-        QSettings st;
-        st.setValue(QStringLiteral("sound/communications"), group->checkedId());
-    };
-    connect(this, &QDialog::accepted, this, save);
-    connect(this, &SoundDialog::applyRequested, this, save);
+    auto *note = new QLabel(
+        QStringLiteral("PipeWire does not expose a reliable system-wide call "
+                       "detection signal. Aero7 therefore leaves application "
+                       "volumes unchanged instead of saving a setting that "
+                       "would not work. Individual calling applications can "
+                       "still manage their own audio."));
+    note->setWordWrap(true);
+    note->setStyleSheet(
+        QStringLiteral("QLabel { color: #5C4800; background: #FFF8D8; "
+                       "border: 1px solid #D7C56B; padding: 8px; }"));
+    v->addWidget(note);
 
     v->addStretch(1);
     return page;

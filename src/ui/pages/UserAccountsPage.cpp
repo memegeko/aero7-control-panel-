@@ -22,12 +22,45 @@
 #include <QDir>
 #include <QImage>
 #include <QLineEdit>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QListWidget>
+#include <QPushButton>
+#include <QComboBox>
+#include <QRegularExpression>
 #include <functional>
+#include <algorithm>
+#include <utility>
 
 #include <pwd.h>
 #include <grp.h>
 #include <unistd.h>
 #include <vector>
+
+namespace {
+
+bool userIsAdministrator(const passwd *pw)
+{
+    if (!pw)
+        return false;
+    int ngroups = 0;
+    getgrouplist(pw->pw_name, pw->pw_gid, nullptr, &ngroups);
+    if (ngroups <= 0)
+        return false;
+    std::vector<gid_t> gids(ngroups);
+    if (getgrouplist(pw->pw_name, pw->pw_gid, gids.data(), &ngroups) == -1)
+        return false;
+    for (gid_t gid : gids) {
+        if (const group *gr = getgrgid(gid)) {
+            const QString name = QString::fromLocal8Bit(gr->gr_name);
+            if (name == QLatin1String("wheel") || name == QLatin1String("sudo"))
+                return true;
+        }
+    }
+    return false;
+}
+
+}
 
 // Data gathering
 UserAccountsPage::Account UserAccountsPage::gatherAccount()
@@ -43,23 +76,8 @@ UserAccountsPage::Account UserAccountsPage::gatherAccount()
 
         // The account is an "Administrator" if it belongs to the wheel or sudo
         // group, the standard admin groups a polkit/sudo policy grants rights to.
-        int ngroups = 0;
-        getgrouplist(pw->pw_name, pw->pw_gid, nullptr, &ngroups);
-        if (ngroups > 0) {
-            std::vector<gid_t> gids(ngroups);
-            if (getgrouplist(pw->pw_name, pw->pw_gid, gids.data(), &ngroups) != -1) {
-                for (gid_t g : gids) {
-                    if (const group *gr = getgrgid(g)) {
-                        const QString name = QString::fromLocal8Bit(gr->gr_name);
-                        if (name == QLatin1String("wheel")
-                            || name == QLatin1String("sudo")) {
-                            a.accountType = QStringLiteral("Administrator");
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        if (userIsAdministrator(pw))
+            a.accountType = QStringLiteral("Administrator");
     }
     if (a.userName.isEmpty())
         a.userName = QString::fromLocal8Bit(qgetenv("USER"));
@@ -86,11 +104,49 @@ UserAccountsPage::Account UserAccountsPage::gatherAccount()
     return a;
 }
 
+QList<UserAccountsPage::Account> UserAccountsPage::gatherAccounts()
+{
+    QList<Account> accounts;
+    setpwent();
+    while (const passwd *pw = getpwent()) {
+        // Arch's regular user range begins at 1000. Exclude nobody and service
+        // accounts even if a local administrator changed their UID.
+        if (pw->pw_uid < 1000 || pw->pw_uid >= 60000)
+            continue;
+        Account account;
+        account.userName = QString::fromLocal8Bit(pw->pw_name);
+        account.fullName =
+            QString::fromLocal8Bit(pw->pw_gecos).section(QLatin1Char(','), 0, 0);
+        if (account.fullName.isEmpty())
+            account.fullName = account.userName;
+        account.accountType = userIsAdministrator(pw)
+            ? QStringLiteral("Administrator") : QStringLiteral("Standard user");
+        const QString home = QString::fromLocal8Bit(pw->pw_dir);
+        for (const QString &path : {
+                 home + QStringLiteral("/.face.icon"),
+                 home + QStringLiteral("/.face"),
+                 QStringLiteral("/var/lib/AccountsService/icons/")
+                     + account.userName}) {
+            if (QFile::exists(path)) {
+                account.picturePath = path;
+                break;
+            }
+        }
+        accounts.append(account);
+    }
+    endpwent();
+    std::sort(accounts.begin(), accounts.end(),
+              [](const Account &left, const Account &right) {
+        return left.fullName.compare(right.fullName, Qt::CaseInsensitive) < 0;
+    });
+    return accounts;
+}
+
 // Sidebar
 QList<SidebarLink> UserAccountsPage::sidebarLinks()
 {
     return {
-        Nav::command("Manage another account", kcm("kcm_users")),
+        Nav::command("Advanced account settings", kcm("kcm_users")),
         Nav::to("Review administrator approval", PageId::SecurityMaintenance),
     };
 }
@@ -157,8 +213,6 @@ UserAccountsPage::UserAccountsPage(QScrollArea *sidebar, QWidget *parent)
     tasks->setContentsMargins(0, 0, 0, 0);
     tasks->setSpacing(12);
 
-    // All of these edits are handled by KDE's user manager, which prompts for
-    // authorization itself.
     auto addTask = [&](const QString &text, std::function<void()> action) {
         auto *link = new LinkLabel(text);
         QObject::connect(link, &LinkLabel::clicked, this, std::move(action));
@@ -174,12 +228,9 @@ UserAccountsPage::UserAccountsPage(QScrollArea *sidebar, QWidget *parent)
     });
     addTask("Change your picture", [this]() { changePicture(); });
     addTask("Change your account name", [this, acct]() { changeDisplayName(acct); });
-    addTask("Change your account type", [this]() {
-        launchDetached(this, {"kcmshell6", "kcm_users"});
-    });
-    addTask("Manage another account", [this]() {
-        launchDetached(this, {"kcmshell6", "kcm_users"});
-    });
+    addTask("Change your account type",
+            [this, acct]() { changeAccountType(acct); });
+    addTask("Manage another account", [this]() { manageAccounts(); });
     addTask("Review administrator approval", [this]() {
         emit navigateRequested(PageId::SecurityMaintenance);
     });
@@ -275,4 +326,209 @@ void UserAccountsPage::changeDisplayName(const Account &account)
         process->deleteLater();
     });
     process->start("pkexec", {"usermod", "-c", name, account.userName});
+}
+
+bool UserAccountsPage::runAccountCommand(const QStringList &arguments,
+                                         const QString &failureMessage)
+{
+    const QString pkexec = QStandardPaths::findExecutable(QStringLiteral("pkexec"));
+    if (pkexec.isEmpty() || arguments.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("User Accounts"),
+                             QStringLiteral("The administrator approval service "
+                                            "is not installed."));
+        return false;
+    }
+    QProcess process;
+    process.start(pkexec, arguments);
+    if (!process.waitForStarted(3000) || !process.waitForFinished(-1)
+        || process.exitStatus() != QProcess::NormalExit
+        || process.exitCode() != 0) {
+        // 126/127 mean the user cancelled or authentication was unavailable.
+        if (process.exitCode() != 126 && process.exitCode() != 127) {
+            const QString detail =
+                QString::fromUtf8(process.readAllStandardError()).trimmed();
+            QMessageBox::warning(
+                this, QStringLiteral("User Accounts"),
+                detail.isEmpty() ? failureMessage : detail);
+        }
+        return false;
+    }
+    return true;
+}
+
+void UserAccountsPage::changeAccountType(const Account &account, bool refreshPage)
+{
+    bool accepted = false;
+    const QString type = QInputDialog::getItem(
+        this, QStringLiteral("Change account type"),
+        QStringLiteral("New account type:"),
+        {QStringLiteral("Standard user"), QStringLiteral("Administrator")},
+        account.accountType == QLatin1String("Administrator") ? 1 : 0,
+        false, &accepted);
+    if (!accepted || type == account.accountType)
+        return;
+
+    QStringList command;
+    if (type == QLatin1String("Administrator")) {
+        command = {QStringLiteral("/usr/bin/usermod"), QStringLiteral("-aG"),
+                   QStringLiteral("wheel"), account.userName};
+    } else {
+        if (account.userName == QString::fromLocal8Bit(qgetenv("USER"))
+            && QMessageBox::warning(
+                   this, QStringLiteral("Change account type"),
+                   QStringLiteral("Removing administrator access from the "
+                                  "signed-in account may prevent future system "
+                                  "changes. Continue?"),
+                   QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+                   != QMessageBox::Yes)
+            return;
+        command = {QStringLiteral("/usr/bin/gpasswd"), QStringLiteral("-d"),
+                   account.userName, QStringLiteral("wheel")};
+    }
+    if (runAccountCommand(command,
+                          QStringLiteral("The account type was not changed."))
+        && refreshPage)
+        emit refreshRequested();
+}
+
+void UserAccountsPage::manageAccounts()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Manage Accounts"));
+    dialog.resize(520, 360);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *intro = new QLabel(
+        QStringLiteral("Create, remove, or change local Aero7 user accounts. "
+                       "Administrator approval is required."));
+    intro->setWordWrap(true);
+    layout->addWidget(intro);
+    auto *list = new QListWidget;
+    layout->addWidget(list, 1);
+
+    QList<Account> accounts;
+    auto reload = [&]() {
+        accounts = gatherAccounts();
+        list->clear();
+        for (const Account &account : std::as_const(accounts)) {
+            auto *item = new QListWidgetItem(
+                themeIcon({"user-identity", "system-users"}),
+                QStringLiteral("%1 (%2) — %3")
+                    .arg(account.fullName, account.userName, account.accountType));
+            item->setData(Qt::UserRole, account.userName);
+            list->addItem(item);
+        }
+        if (list->count())
+            list->setCurrentRow(0);
+    };
+    reload();
+
+    auto selectedAccount = [&]() -> Account {
+        const QString user = list->currentItem()
+            ? list->currentItem()->data(Qt::UserRole).toString() : QString();
+        for (const Account &account : std::as_const(accounts))
+            if (account.userName == user)
+                return account;
+        return {};
+    };
+
+    auto *actions = new QHBoxLayout;
+    auto *add = new QPushButton(QStringLiteral("Create account…"));
+    auto *type = new QPushButton(QStringLiteral("Change type…"));
+    auto *remove = new QPushButton(QStringLiteral("Remove account…"));
+    actions->addWidget(add);
+    actions->addWidget(type);
+    actions->addWidget(remove);
+    actions->addStretch(1);
+    layout->addLayout(actions);
+
+    connect(add, &QPushButton::clicked, &dialog, [&, this]() {
+        bool accepted = false;
+        const QString username = QInputDialog::getText(
+            &dialog, QStringLiteral("Create account"),
+            QStringLiteral("User name (lower-case letters and numbers):"),
+            QLineEdit::Normal, {}, &accepted).trimmed();
+        static const QRegularExpression valid(
+            QStringLiteral("^[a-z_][a-z0-9_-]{0,31}$"));
+        if (!accepted)
+            return;
+        if (!valid.match(username).hasMatch()) {
+            QMessageBox::warning(&dialog, QStringLiteral("Create account"),
+                                 QStringLiteral("Enter a valid Linux user name."));
+            return;
+        }
+        const QString fullName = QInputDialog::getText(
+            &dialog, QStringLiteral("Create account"),
+            QStringLiteral("Display name:"), QLineEdit::Normal,
+            username, &accepted).trimmed();
+        if (!accepted)
+            return;
+        const QString accountType = QInputDialog::getItem(
+            &dialog, QStringLiteral("Create account"),
+            QStringLiteral("Account type:"),
+            {QStringLiteral("Standard user"), QStringLiteral("Administrator")},
+            0, false, &accepted);
+        if (!accepted)
+            return;
+        QStringList command = {QStringLiteral("/usr/bin/useradd"),
+                               QStringLiteral("-m"), QStringLiteral("-c"),
+                               fullName, QStringLiteral("-s"),
+                               QStringLiteral("/bin/bash")};
+        if (accountType == QLatin1String("Administrator"))
+            command << QStringLiteral("-G") << QStringLiteral("wheel");
+        command << username;
+        if (!runAccountCommand(
+                command, QStringLiteral("The account could not be created.")))
+            return;
+
+        const QString terminal =
+            QStandardPaths::findExecutable(QStringLiteral("qterminal"));
+        if (!terminal.isEmpty())
+            QProcess::startDetached(
+                terminal, {QStringLiteral("-e"), QStringLiteral("pkexec"),
+                           QStringLiteral("/usr/bin/passwd"), username});
+        QMessageBox::information(
+            &dialog, QStringLiteral("Create account"),
+            QStringLiteral("The account was created. Set its password in the "
+                           "Command Prompt window."));
+        reload();
+    });
+
+    connect(type, &QPushButton::clicked, &dialog, [&, this]() {
+        const Account account = selectedAccount();
+        if (account.userName.isEmpty())
+            return;
+        changeAccountType(account, false);
+        reload();
+    });
+
+    connect(remove, &QPushButton::clicked, &dialog, [&, this]() {
+        const Account account = selectedAccount();
+        if (account.userName.isEmpty())
+            return;
+        if (account.userName == QString::fromLocal8Bit(qgetenv("USER"))) {
+            QMessageBox::warning(&dialog, QStringLiteral("Remove account"),
+                                 QStringLiteral("You cannot remove the account "
+                                                "that is currently signed in."));
+            return;
+        }
+        if (QMessageBox::warning(
+                &dialog, QStringLiteral("Remove account"),
+                QStringLiteral("Remove %1? The home folder and personal files "
+                               "will be preserved.")
+                    .arg(account.fullName),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+            != QMessageBox::Yes)
+            return;
+        if (runAccountCommand(
+                {QStringLiteral("/usr/bin/userdel"), account.userName},
+                QStringLiteral("The account could not be removed."))) {
+            reload();
+        }
+    });
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    dialog.exec();
+    emit refreshRequested();
 }

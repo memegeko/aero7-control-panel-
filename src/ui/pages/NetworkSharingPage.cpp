@@ -15,6 +15,30 @@
 #include <QDir>
 #include <QHostInfo>
 #include <QSysInfo>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QPlainTextEdit>
+
+namespace {
+
+QString runNetworkTool(const QString &program, const QStringList &arguments,
+                       int timeout = 5000)
+{
+    QProcess process;
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
+    process.setProcessEnvironment(environment);
+    process.start(program, arguments);
+    if (!process.waitForStarted(2000) || !process.waitForFinished(timeout))
+        return {};
+    return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+}
+
+}
 
 // Data gathering
 // The interface backing the default route, read from /proc/net/route. Each line
@@ -59,6 +83,7 @@ NetworkSharingPage::NetInfo NetworkSharingPage::gatherInfo()
     n.computerName = n.computerName.toUpper();
 
     const QString iface = defaultRouteInterface();
+    n.interfaceName = iface;
     n.connected = !iface.isEmpty();
 
     // A wireless interface exposes a "wireless" directory under its sysfs node;
@@ -69,9 +94,31 @@ NetworkSharingPage::NetInfo NetworkSharingPage::gatherInfo()
 
     n.accessType     = n.connected ? QStringLiteral("Internet")
                                     : QStringLiteral("No network access");
-    n.connectionName = n.wireless ? QStringLiteral("Wireless Network Connection")
-                                   : QStringLiteral("Local Area Connection");
-    n.networkName    = QStringLiteral("Network");
+    n.connectionName = iface.isEmpty()
+        ? (n.wireless ? QStringLiteral("Wireless Network Connection")
+                      : QStringLiteral("Local Area Connection"))
+        : iface;
+    if (!iface.isEmpty()) {
+        n.networkName = runNetworkTool(
+            QStringLiteral("nmcli"),
+            {QStringLiteral("-g"), QStringLiteral("GENERAL.CONNECTION"),
+             QStringLiteral("device"), QStringLiteral("show"), iface});
+        const QStringList addresses = runNetworkTool(
+            QStringLiteral("nmcli"),
+            {QStringLiteral("-g"), QStringLiteral("IP4.ADDRESS"),
+             QStringLiteral("device"), QStringLiteral("show"), iface})
+                                          .split(QLatin1Char('\n'),
+                                                 Qt::SkipEmptyParts);
+        if (!addresses.isEmpty())
+            n.ipv4Address = addresses.first();
+        n.gateway = runNetworkTool(
+            QStringLiteral("nmcli"),
+            {QStringLiteral("-g"), QStringLiteral("IP4.GATEWAY"),
+             QStringLiteral("device"), QStringLiteral("show"), iface});
+    }
+    if (n.networkName.isEmpty() || n.networkName == QLatin1String("--"))
+        n.networkName = n.connected ? QStringLiteral("Network")
+                                    : QStringLiteral("Not connected");
 
     return n;
 }
@@ -81,7 +128,8 @@ QList<SidebarLink> NetworkSharingPage::sidebarLinks()
 {
     return {
         Nav::command("Change adapter settings", kcm("kcm_networkmanagement")),
-        Nav::plain("Change advanced sharing settings"),
+        Nav::command("Change advanced sharing settings",
+                     kcm("kcm_networkmanagement")),
     };
 }
 
@@ -161,7 +209,8 @@ QWidget *NetworkSharingPage::buildMapLink(bool active)
 
 // Task helper
 void NetworkSharingPage::addTask(QVBoxLayout *into, const QStringList &iconNames,
-                                 const QString &title, const QString &description)
+                                 const QString &title, const QString &description,
+                                 std::function<void()> action)
 {
     auto *row = new QHBoxLayout;
     row->setContentsMargins(0, 0, 0, 0);
@@ -186,8 +235,7 @@ void NetworkSharingPage::addTask(QVBoxLayout *into, const QStringList &iconNames
     textCol->setSpacing(1);
 
     auto *task = new LinkLabel(title);
-    connect(task, &LinkLabel::clicked, this,
-            [this]() { emit settingsRequested(); });
+    connect(task, &LinkLabel::clicked, this, std::move(action));
     textCol->addWidget(task);
 
     auto *descLabel = Win7::label(description, 9, "#333333");
@@ -198,6 +246,76 @@ void NetworkSharingPage::addTask(QVBoxLayout *into, const QStringList &iconNames
 
     into->addLayout(row);
     into->addSpacing(14);
+}
+
+void NetworkSharingPage::connectToNetwork()
+{
+    const QStringList connections = runNetworkTool(
+        QStringLiteral("nmcli"),
+        {QStringLiteral("--escape"), QStringLiteral("no"),
+         QStringLiteral("-g"), QStringLiteral("NAME"),
+         QStringLiteral("connection"), QStringLiteral("show")})
+                                        .split(QLatin1Char('\n'),
+                                               Qt::SkipEmptyParts);
+    if (connections.isEmpty()) {
+        QMessageBox::information(
+            this, QStringLiteral("Connect to a network"),
+            QStringLiteral("No saved network connections were found. Use "
+                           "\"Set up a new connection or network\" first."));
+        return;
+    }
+
+    bool accepted = false;
+    const QString selected = QInputDialog::getItem(
+        this, QStringLiteral("Connect to a network"),
+        QStringLiteral("Saved connection:"), connections, 0, false, &accepted);
+    if (!accepted || selected.isEmpty())
+        return;
+
+    QProcess process;
+    process.start(QStringLiteral("nmcli"),
+                  {QStringLiteral("connection"), QStringLiteral("up"), selected});
+    if (!process.waitForStarted(2000) || !process.waitForFinished(30000)
+        || process.exitCode() != 0) {
+        const QString error =
+            QString::fromUtf8(process.readAllStandardError()).trimmed();
+        QMessageBox::warning(
+            this, QStringLiteral("Connect to a network"),
+            error.isEmpty() ? QStringLiteral("The connection could not be activated.")
+                            : error);
+        return;
+    }
+    QMessageBox::information(this, QStringLiteral("Connect to a network"),
+                             QStringLiteral("The connection is now active."));
+}
+
+void NetworkSharingPage::showDiagnostics()
+{
+    const NetInfo info = gatherInfo();
+    QString report;
+    report += QStringLiteral("Connection: %1\nInterface: %2\nAccess: %3\n")
+                  .arg(info.networkName, info.interfaceName, info.accessType);
+    report += QStringLiteral("IPv4 address: %1\nGateway: %2\n\n")
+                  .arg(info.ipv4Address.isEmpty() ? QStringLiteral("None")
+                                                  : info.ipv4Address,
+                       info.gateway.isEmpty() ? QStringLiteral("None")
+                                              : info.gateway);
+    report += runNetworkTool(QStringLiteral("nmcli"),
+                             {QStringLiteral("general"), QStringLiteral("status")});
+    report += QStringLiteral("\n\nRoutes:\n");
+    report += runNetworkTool(QStringLiteral("ip"), {QStringLiteral("route")});
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Network Diagnostics"));
+    dialog.resize(560, 380);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *output = new QPlainTextEdit(report);
+    output->setReadOnly(true);
+    layout->addWidget(output);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    dialog.exec();
 }
 
 // Page
@@ -255,7 +373,7 @@ NetworkSharingPage::NetworkSharingPage(QScrollArea *sidebar, QWidget *parent)
     // "See full map" link, pinned to the top-right of the map row.
     auto *fullMap = new LinkLabel("See full map");
     connect(fullMap, &LinkLabel::clicked, this,
-            [this]() { emit settingsRequested(); });
+            [this]() { showDiagnostics(); });
     mapRow->addWidget(fullMap, 0, Qt::AlignTop);
 
     contentV->addLayout(mapRow);
@@ -376,25 +494,29 @@ NetworkSharingPage::NetworkSharingPage(QScrollArea *sidebar, QWidget *parent)
                        "list-add"},
             "Set up a new connection or network",
             "Set up a wireless, broadband, dial-up, ad hoc, or VPN connection; "
-            "or set up a router or access point.");
+            "or set up a router or access point.",
+            [this]() { emit settingsRequested(); });
 
     addTask(contentV, {"network-wireless", "network-connect",
                        "preferences-system-network"},
             "Connect to a network",
             "Connect or reconnect to a wireless, wired, dial-up, or VPN network "
-            "connection.");
+            "connection.",
+            [this]() { connectToNetwork(); });
 
     addTask(contentV, {"network-type-home", "network-workgroup", "system-users",
                        "preferences-system-network"},
-            "Choose homegroup and sharing options",
-            "Access files and printers located on other network computers, or "
-            "change sharing settings.");
+            "Change advanced sharing settings",
+            "Configure connection sharing, DNS, addresses and other adapter "
+            "settings.",
+            [this]() { emit settingsRequested(); });
 
     addTask(contentV, {"system-help", "help-browser", "tools-wizard",
                        "preferences-system"},
             "Troubleshoot problems",
             "Diagnose and repair network problems, or get troubleshooting "
-            "information.");
+            "information.",
+            [this]() { showDiagnostics(); });
 
     contentV->addStretch(1);
 }

@@ -604,7 +604,15 @@ void MainWindow::showEntry(const QString &entry)
             auto *sidebar = buildSubpageSidebar(
                 PersonalizationPage::sidebarLinks(),
                 PersonalizationPage::sidebarSeeAlso());
-            m_scroll->setWidget(new PersonalizationPage(sidebar));
+            auto *personalization = new PersonalizationPage(sidebar);
+            QObject::connect(
+                personalization, &PersonalizationPage::soundRequested,
+                this, [this]() {
+                    SoundDialog dialog(this);
+                    dialog.showTab(SoundDialog::TabSounds);
+                    dialog.exec();
+                });
+            m_scroll->setWidget(personalization);
         } else if (entry == kFontsPath) {
             auto *sidebar = buildSubpageSidebar(
                 FontsPage::sidebarLinks(),

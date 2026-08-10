@@ -10,6 +10,12 @@ int main()
         return 1;
 
     QSet<QString> keys;
+    const QSet<QString> nativeReplacementKeys = {
+        QStringLiteral("personalization"), QStringLiteral("sound"),
+        QStringLiteral("network-status"), QStringLiteral("power"),
+        QStringLiteral("accounts"),
+    };
+    QSet<QString> nativeReplacementsFound;
     bool foundNetworkManagement = false;
     bool foundSpelling = false;
     for (const SettingDefinition &setting : settings) {
@@ -41,6 +47,11 @@ int main()
         if (setting.kdeModule.contains(QStringLiteral("kwallet"),
                                        Qt::CaseInsensitive))
             return 9;
+        if (nativeReplacementKeys.contains(setting.key)) {
+            if (setting.status != ReplacementStatus::Native)
+                return 11;
+            nativeReplacementsFound.insert(setting.key);
+        }
         if (setting.backend == SettingsBackend::Aero7Page
             && PageRegistry::pathFor(setting.page).isEmpty())
             return 6;
@@ -51,6 +62,8 @@ int main()
 
     if (!foundNetworkManagement || !foundSpelling)
         return 10;
+    if (nativeReplacementsFound != nativeReplacementKeys)
+        return 12;
 
     const QList<PageId> hubs = {
         PageId::DisplaySettings, PageId::NetworkSettings,

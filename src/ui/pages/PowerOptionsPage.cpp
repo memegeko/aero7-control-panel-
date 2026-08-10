@@ -16,12 +16,14 @@
 #include <QSignalBlocker>
 #include <QMouseEvent>
 #include <QEvent>
+#include <QProgressBar>
 
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QDBusVariant>
 #include <QDBusArgument>
+#include <QDBusObjectPath>
 
 // power-profiles-daemon access//
 // PPD lives on the system bus. All access goes through the standard
@@ -39,6 +41,19 @@ QDBusInterface ppdProperties()
                           QString::fromLatin1(kPath),
                           QStringLiteral("org.freedesktop.DBus.Properties"),
                           QDBusConnection::systemBus());
+}
+
+QVariant dbusProperty(const QString &service, const QString &path,
+                      const QString &interface, const QString &property)
+{
+    QDBusInterface properties(
+        service, path, QStringLiteral("org.freedesktop.DBus.Properties"),
+        QDBusConnection::systemBus());
+    if (!properties.isValid())
+        return {};
+    QDBusReply<QVariant> reply =
+        properties.call(QStringLiteral("Get"), interface, property);
+    return reply.isValid() ? reply.value() : QVariant();
 }
 } // namespace
 
@@ -100,16 +115,75 @@ void PowerOptionsPage::setActiveProfile(const QString &profileId)
                     QVariant::fromValue(QDBusVariant(profileId)));
 }
 
+PowerOptionsPage::BatteryInfo PowerOptionsPage::batteryInfo() const
+{
+    BatteryInfo info;
+    constexpr auto service = "org.freedesktop.UPower";
+    constexpr auto path = "/org/freedesktop/UPower";
+    constexpr auto interface = "org.freedesktop.UPower";
+    const QVariant onBattery = dbusProperty(
+        QString::fromLatin1(service), QString::fromLatin1(path),
+        QString::fromLatin1(interface), QStringLiteral("OnBattery"));
+    if (!onBattery.isValid())
+        return info;
+    info.onBattery = onBattery.toBool();
+
+    QDBusInterface upower(QString::fromLatin1(service), QString::fromLatin1(path),
+                          QString::fromLatin1(interface),
+                          QDBusConnection::systemBus());
+    QDBusReply<QDBusObjectPath> display =
+        upower.call(QStringLiteral("GetDisplayDevice"));
+    if (!display.isValid() || display.value().path() == QLatin1String("/"))
+        return info;
+
+    const QString devicePath = display.value().path();
+    const QString deviceInterface = QStringLiteral("org.freedesktop.UPower.Device");
+    if (!dbusProperty(QString::fromLatin1(service), devicePath, deviceInterface,
+                      QStringLiteral("IsPresent")).toBool())
+        return info;
+    info.percentage = dbusProperty(
+        QString::fromLatin1(service), devicePath, deviceInterface,
+        QStringLiteral("Percentage")).toDouble();
+    const uint state = dbusProperty(
+        QString::fromLatin1(service), devicePath, deviceInterface,
+        QStringLiteral("State")).toUInt();
+    switch (state) {
+    case 1: info.state = QStringLiteral("Charging"); break;
+    case 2: info.state = QStringLiteral("Discharging"); break;
+    case 4: info.state = QStringLiteral("Fully charged"); break;
+    case 5: info.state = QStringLiteral("Pending charge"); break;
+    case 6: info.state = QStringLiteral("Pending discharge"); break;
+    default: info.state = QStringLiteral("Unknown"); break;
+    }
+    const qulonglong seconds = dbusProperty(
+        QString::fromLatin1(service), devicePath, deviceInterface,
+        info.onBattery ? QStringLiteral("TimeToEmpty")
+                       : QStringLiteral("TimeToFull")).toULongLong();
+    if (seconds > 0) {
+        const qulonglong hours = seconds / 3600;
+        const qulonglong minutes = (seconds % 3600) / 60;
+        info.remaining = QStringLiteral("%1 hr %2 min remaining")
+                             .arg(hours).arg(minutes);
+    }
+    info.model = dbusProperty(
+        QString::fromLatin1(service), devicePath, deviceInterface,
+        QStringLiteral("Model")).toString();
+    info.available = true;
+    return info;
+}
+
 // Sidebar
 QList<SidebarLink> PowerOptionsPage::sidebarLinks()
 {
     // "Control Panel Home" is prepended by the sidebar shell itself, so it must
     // not be repeated here.
     return {
-        Nav::plain("Require a password when the computer wakes"),
-        Nav::plain("Choose what the power buttons do"),
-        Nav::plain("Create a power plan"),
-        Nav::plain("Choose when to turn off the display"),
+        Nav::command("Require a password when the computer wakes",
+                     {"kcmshell6", "kcm_powerdevilprofilesconfig"}),
+        Nav::command("Choose what the power buttons do",
+                     {"kcmshell6", "kcm_powerdevilprofilesconfig"}),
+        Nav::command("Advanced sleep and display settings",
+                     {"kcmshell6", "kcm_powerdevilprofilesconfig"}),
     };
 }
 
@@ -166,6 +240,32 @@ PowerOptionsPage::PowerOptionsPage(QScrollArea *sidebar, QWidget *parent)
     intro->setStyleSheet("color: #1A1A1A; background: transparent;");
     contentV->addWidget(intro);
     contentV->addSpacing(16);
+
+    const BatteryInfo battery = batteryInfo();
+    if (battery.available) {
+        contentV->addLayout(Win7::sectionHeading("Battery status"));
+        contentV->addSpacing(6);
+        auto *batteryRow = new QHBoxLayout;
+        batteryRow->setContentsMargins(14, 0, 0, 0);
+        auto *meter = new QProgressBar;
+        meter->setRange(0, 100);
+        meter->setValue(qRound(battery.percentage));
+        meter->setFormat(QStringLiteral("%1%").arg(qRound(battery.percentage)));
+        meter->setFixedWidth(220);
+        batteryRow->addWidget(meter);
+        auto *details = Win7::label(
+            QStringLiteral("%1%2%3")
+                .arg(battery.state,
+                     battery.remaining.isEmpty()
+                         ? QString() : QStringLiteral(" — ") + battery.remaining,
+                     battery.model.isEmpty()
+                         ? QString() : QStringLiteral("\n") + battery.model),
+            9, "#333333");
+        details->setWordWrap(true);
+        batteryRow->addWidget(details, 1);
+        contentV->addLayout(batteryRow);
+        contentV->addSpacing(16);
+    }
 
     m_group = new QButtonGroup(this);
     QObject::connect(m_group, &QButtonGroup::buttonClicked, this,

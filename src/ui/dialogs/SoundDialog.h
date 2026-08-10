@@ -78,6 +78,7 @@ private:
     void rebuildRows(DeviceList &dl);
     void selectRow(DeviceList &dl, int index);
     void applyDefault(DeviceList &dl);
+    void showProperties(DeviceList &dl);
 
     // Live level metering of the default device via parec on its monitor/source.
     void startMonitor(DeviceList &dl);

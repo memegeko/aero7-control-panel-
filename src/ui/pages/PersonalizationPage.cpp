@@ -22,7 +22,15 @@
 #include <QSet>
 #include <QMouseEvent>
 #include <QEvent>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QCheckBox>
+#include <QSpinBox>
+#include <QFormLayout>
 #include <algorithm>
+#include <functional>
 
 // Data gathering
 // Parse a "r,g,b" (optionally with a trailing alpha) triple into a QColor.
@@ -164,7 +172,7 @@ QList<SidebarLink> PersonalizationPage::sidebarLinks()
     return {
         Nav::command("Change desktop icons", kcm("kcm_icons")),
         Nav::command("Change mouse pointers", kcm("kcm_cursortheme")),
-        Nav::command("Change your account picture", kcm("kcm_users")),
+        Nav::to("Change your account picture", PageId::UserAccounts),
     };
 }
 
@@ -261,7 +269,7 @@ PersonalizationPage::PersonalizationPage(QScrollArea *sidebar, QWidget *parent)
     actionsRow->setSpacing(24);
 
     auto addAction = [&](const QString &iconName, const QString &text,
-                         const QStringList &cmd) {
+                         std::function<void()> action) {
         auto *col = new QVBoxLayout;
         col->setContentsMargins(0, 0, 0, 0);
         col->setSpacing(4);
@@ -275,22 +283,26 @@ PersonalizationPage::PersonalizationPage(QScrollArea *sidebar, QWidget *parent)
 
         auto *link = new LinkLabel(text);
         link->setAlignment(Qt::AlignHCenter);
-        QObject::connect(link, &LinkLabel::clicked, this, [this, cmd]() {
-            launchDetached(this, cmd);
-        });
+        QObject::connect(link, &LinkLabel::clicked, this, std::move(action));
         col->addWidget(link, 0, Qt::AlignHCenter);
 
         actionsRow->addLayout(col);
     };
 
     addAction("preferences-desktop-wallpaper", "Desktop\nBackground",
-              { "kcmshell6", "kcm_wallpaper" });
+              [this]() { chooseWallpaper(); });
     addAction("preferences-desktop-color", "Window\nColor",
-              { "kcmshell6", "kcm_colors" });
+              [this]() {
+                  QMessageBox::information(
+                      this, QStringLiteral("Window Color"),
+                      QStringLiteral("Choose one of the color schemes above. "
+                                     "It is applied immediately to Plasma and "
+                                     "Aero7 applications."));
+              });
     addAction("preferences-desktop-sound", "Sounds",
-              { "kcmshell6", "kcm_soundtheme" });
+              [this]() { emit soundRequested(); });
     addAction("preferences-desktop-screensaver", "Screen\nSaver",
-              { "kcmshell6", "kcm_screenlocker" });
+              [this]() { configureLockScreen(); });
     actionsRow->addStretch(1);
 
     contentV->addLayout(actionsRow);
@@ -324,6 +336,82 @@ void PersonalizationPage::refreshHighlight()
               " border-radius: 3px; }"
             : "#themeCell { background: transparent; border: 1px solid transparent; }");
     }
+}
+
+void PersonalizationPage::chooseWallpaper()
+{
+    const QString image = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Choose Desktop Background"), QDir::homePath(),
+        QStringLiteral("Images (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*)"));
+    if (image.isEmpty())
+        return;
+    const QString tool = QStandardPaths::findExecutable(
+        QStringLiteral("plasma-apply-wallpaperimage"));
+    if (tool.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Desktop Background"),
+                             QStringLiteral("The Plasma wallpaper service is "
+                                            "not installed."));
+        return;
+    }
+    QProcess process;
+    process.start(tool, {image});
+    if (!process.waitForStarted(2000) || !process.waitForFinished(10000)
+        || process.exitCode() != 0) {
+        const QString detail =
+            QString::fromUtf8(process.readAllStandardError()).trimmed();
+        QMessageBox::warning(
+            this, QStringLiteral("Desktop Background"),
+            detail.isEmpty() ? QStringLiteral("The background could not be changed.")
+                             : detail);
+    }
+}
+
+void PersonalizationPage::configureLockScreen()
+{
+    const QString config =
+        QDir::homePath() + QStringLiteral("/.config/kscreenlockerrc");
+    QSettings settings(config, QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("Daemon"));
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Screen Saver and Lock"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *enabled = new QCheckBox(
+        QStringLiteral("Lock the computer automatically when it is idle"));
+    enabled->setChecked(
+        settings.value(QStringLiteral("Autolock"), true).toBool());
+    layout->addWidget(enabled);
+
+    auto *form = new QFormLayout;
+    auto *minutes = new QSpinBox;
+    minutes->setRange(1, 120);
+    minutes->setSuffix(QStringLiteral(" minutes"));
+    minutes->setValue(
+        settings.value(QStringLiteral("Timeout"), 5).toInt());
+    form->addRow(QStringLiteral("Wait:"), minutes);
+    layout->addLayout(form);
+
+    auto *resume = new QCheckBox(
+        QStringLiteral("Require a password after sleep or suspend"));
+    resume->setChecked(
+        settings.value(QStringLiteral("LockOnResume"), true).toBool());
+    layout->addWidget(resume);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+    if (dialog.exec() != QDialog::Accepted) {
+        settings.endGroup();
+        return;
+    }
+
+    settings.setValue(QStringLiteral("Autolock"), enabled->isChecked());
+    settings.setValue(QStringLiteral("Timeout"), minutes->value());
+    settings.setValue(QStringLiteral("LockOnResume"), resume->isChecked());
+    settings.endGroup();
+    settings.sync();
 }
 
 bool PersonalizationPage::eventFilter(QObject *watched, QEvent *event)

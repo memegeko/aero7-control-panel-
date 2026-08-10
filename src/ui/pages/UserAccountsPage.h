@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QString>
 #include <QStringList>
+#include <QList>
 #include "PageId.h"
 
 class QScrollArea;
@@ -37,6 +38,11 @@ private:
         QString picturePath;   // avatar image path, empty if none found
     };
     static Account gatherAccount();
+    static QList<Account> gatherAccounts();
     void changePicture();
     void changeDisplayName(const Account &account);
+    void changeAccountType(const Account &account, bool refreshPage = true);
+    void manageAccounts();
+    bool runAccountCommand(const QStringList &arguments,
+                           const QString &failureMessage);
 };
