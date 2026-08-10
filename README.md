@@ -99,6 +99,7 @@ Track planned work and report problems in the
 
 ## Related Aero7 projects
 
+- [Aero7](https://github.com/memegeko/aero7) — the main Aero7 operating system
 - [Aero7 Shell](https://github.com/memegeko/aero7-shell) — the Aero7 desktop shell and installer
 - [Aero7 Package Repository](https://github.com/memegeko/aero7-repo) — official packages and updates for Aero7
 
