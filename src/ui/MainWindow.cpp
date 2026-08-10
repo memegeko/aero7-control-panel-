@@ -1361,7 +1361,6 @@ QWidget *MainWindow::buildCategoryPage(const QString &currentCategory)
             { "Install or uninstall display languages",      kcm("kcm_regionandlang") },
             { "Change the date, time, or number format",     kcm("kcm_regionandlang") },
             { "Change location",                             kcm("kcm_regionandlang") },
-            { "Manage Linux Credentials",                    kcm("kcm_kwallet") },
             { "Change how your mouse works",                 kcm("kcm_mouse") },
             { "Change how your keyboard works",              kcm("kcm_access") },
             { "Start speech recognition",                    kcm("kcm_access") },

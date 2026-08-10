@@ -181,16 +181,13 @@ const QList<SettingDefinition> &all()
              ReplacementStatus::Partial, "kcm_users"),
         kde("online-accounts", "Online Accounts", "Online Accounts", "kcm_kaccounts", SettingsSection::Accounts,
             "Connect supported online services to the desktop.", "preferences-online-accounts"),
-        kde("credentials", "Saved Credentials", "KDE Wallet", "kcm_kwallet", SettingsSection::Accounts,
-            "Manage encrypted credentials stored for desktop applications.", "document-encrypt"),
-
         // Region and language
         applet("date-time", "Date and Time", "Date & Time", "datetime", SettingsSection::RegionLanguage,
                "Set the clock, time zone, additional clocks and Internet time.", "preferences-system-time",
                ReplacementStatus::Partial, "kcm_clock"),
         kde("region-language", "Region and Language", "Region & Language", "kcm_regionandlang", SettingsSection::RegionLanguage,
             "Set language, number, currency and time formats.", "preferences-desktop-locale"),
-        kde("spell-check", "Spelling", "Spell Check", "kcm_spellchecking", SettingsSection::RegionLanguage,
+        kde("spell-check", "Spelling", "Spell Check", "kcmspellchecking", SettingsSection::RegionLanguage,
             "Choose spell-check dictionaries and options.", "tools-check-spelling"),
 
         // Applications and file behavior
@@ -402,7 +399,6 @@ LinkTarget targetForLegacyLabel(const QString &text)
         {"Internet Options", PageId::InternetOptions},
         {"AutoPlay", PageId::AutoPlay},
         {"Default Programs", PageId::DefaultPrograms},
-        {"Credential Manager", PageId::SecurityMaintenance},
         {"Display", PageId::DisplaySettings},
         {"Taskbar and Start Menu", PageId::TaskbarStartMenu},
         {"Folder Options", PageId::FolderOptions},
@@ -431,7 +427,6 @@ LinkTarget targetForLegacyLabel(const QString &text)
         return toPage(it.value());
 
     static const QHash<QString, QStringList> commands = {
-        {"Manage Linux Credentials", kcm("kcm_kwallet")},
         {"Change adapter settings", {"kcmshell6", "kcm_networkmanagement"}},
         {"Adjust visual effects", kcm("kcm_kwin_effects")},
         {"Adjust indexing options", kcm("kcm_baloofile")},

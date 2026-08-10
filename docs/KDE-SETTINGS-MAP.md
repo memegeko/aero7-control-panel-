@@ -24,6 +24,9 @@ so it can later be copied directly into the Aero7 GitHub wiki.
   application.
 - If an optional KCM is not installed, Control Panel shows a clear error rather
   than silently doing nothing.
+- Aero7 installs `plasma-nm` for Network Management and uses Plasma 6's
+  `kcmspellchecking` module with English and Dutch Hunspell dictionaries.
+- KDE Wallet is intentionally not installed or exposed by Aero7 Control Panel.
 
 ## Appearance and themes
 
@@ -116,7 +119,6 @@ so it can later be copied directly into the Aero7 GitHub wiki.
 | --- | --- | --- | --- |
 | User Accounts | Users | `kcm_users` / Aero7 User Accounts | Aero7 partial |
 | Online Accounts | Online Accounts | `kcm_kaccounts` | KDE bridge |
-| Saved Credentials | KDE Wallet | `kcm_kwallet` | KDE bridge |
 
 ## Region and language
 
@@ -124,7 +126,7 @@ so it can later be copied directly into the Aero7 GitHub wiki.
 | --- | --- | --- | --- |
 | Date and Time | Date & Time | `kcm_clock` / Aero7 Date and Time dialog | Aero7 partial |
 | Region and Language | Region & Language | `kcm_regionandlang` | KDE bridge |
-| Spelling | Spell Check | `kcm_spellchecking` | KDE bridge |
+| Spelling | Spell Check | `kcmspellchecking` | KDE bridge |
 
 ## Default programs and files
 

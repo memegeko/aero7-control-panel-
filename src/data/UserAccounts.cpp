@@ -11,12 +11,6 @@ const QList<DetailGroup> &userAccountsGroups()
                 { "Change your Linux Password" },
             }
         },
-        {
-            "preferences-system-login", "Credential Manager",
-            {
-                { "Manage Linux Credentials" },
-            }
-        },
     };
     return groups;
 }

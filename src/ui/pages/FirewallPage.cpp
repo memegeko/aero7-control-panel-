@@ -13,6 +13,9 @@
 #include <QFont>
 #include <QFile>
 #include <QHostInfo>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QPushButton>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -87,7 +90,7 @@ QList<SidebarLink> FirewallPage::sidebarLinks()
 {
     return {
         Nav::plain("Allow a port or service through Linux Firewall"),
-        Nav::disabled("Change notification settings"),
+        Nav::to("Change notification settings", PageId::Firewall),
         Nav::plain("Turn Linux Firewall on or off"),
         Nav::plain("Restore defaults"),
         Nav::plain("Advanced settings"),
@@ -118,13 +121,17 @@ static QString incomingText(const QString &policy)
                           "the list of allowed programs");
 }
 
-// Notification phrasing derived from ufw's LOGLEVEL ("off" disables logging).
+// Notification/logging phrasing derived from ufw's LOGLEVEL. UFW records
+// firewall events; it does not provide interactive per-program approval popups.
 static QString notifyText(const QString &logLevel)
 {
+    if (logLevel.isEmpty())
+        return QStringLiteral("Unknown");
     if (logLevel.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0)
-        return Branding::brand("Do not notify me when Linux Firewall blocks a "
-                               "new program");
-    return Branding::brand("Notify me when Linux Firewall blocks a new program");
+        return QStringLiteral("Off");
+    QString level = logLevel.toLower();
+    level[0] = level[0].toUpper();
+    return QStringLiteral("%1 event logging").arg(level);
 }
 
 QWidget *FirewallPage::buildLocationPanel(const QString &title,
@@ -335,6 +342,12 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
     });
     controls->addWidget(allow);
 
+    auto *notifications = new QPushButton("Notification settings…");
+    notifications->setObjectName("firewall-notification-settings");
+    connect(notifications, &QPushButton::clicked, this,
+            [this, info]() { showNotificationSettings(info.logLevel); });
+    controls->addWidget(notifications);
+
     auto *reset = new QPushButton("Restore defaults…");
     reset->setObjectName("firewall-restore-defaults");
     connect(reset, &QPushButton::clicked, this, [this]() {
@@ -361,6 +374,62 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
         /*expanded=*/true, info));
 
     contentV->addStretch(1);
+}
+
+void FirewallPage::showNotificationSettings(const QString &currentLogLevel)
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle("Firewall notification settings");
+    dialog.setModal(true);
+    dialog.setMinimumWidth(500);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(18, 16, 18, 14);
+    layout->setSpacing(12);
+
+    auto *description = Win7::bodyLabel(
+        "UFW does not show per-program approval popups. These settings control "
+        "which firewall events are recorded in the system journal for review "
+        "and troubleshooting.");
+    description->setWordWrap(true);
+    layout->addWidget(description);
+
+    layout->addWidget(Win7::bodyLabel("Firewall event logging:"));
+
+    auto *level = new QComboBox;
+    level->setObjectName("firewall-log-level");
+    level->addItem("Off — do not record firewall events", "off");
+    level->addItem("Low (recommended) — record important blocked traffic", "low");
+    level->addItem("Medium — record additional firewall activity", "medium");
+    level->addItem("High — record most traffic with rate limiting", "high");
+    level->addItem("Full — record all firewall traffic", "full");
+    const QString normalized = currentLogLevel.trimmed().toLower();
+    const int current = level->findData(normalized);
+    level->setCurrentIndex(current >= 0 ? current : 1);
+    layout->addWidget(level);
+
+    auto *warning = Win7::bodyLabel(
+        "High and Full can create a large amount of journal data. Low is the "
+        "recommended setting for normal use.");
+    warning->setWordWrap(true);
+    layout->addWidget(warning);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const QString selected = level->currentData().toString();
+    if (selected == normalized)
+        return;
+
+    runUfw({"logging", selected},
+           QStringLiteral("Firewall event logging was changed to %1.")
+               .arg(level->currentText().section(QStringLiteral(" — "), 0, 0)));
 }
 
 void FirewallPage::runUfw(const QStringList &arguments,

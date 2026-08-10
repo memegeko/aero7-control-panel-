@@ -10,6 +10,8 @@ int main()
         return 1;
 
     QSet<QString> keys;
+    bool foundNetworkManagement = false;
+    bool foundSpelling = false;
     for (const SettingDefinition &setting : settings) {
         if (setting.key.isEmpty() || setting.aeroName.isEmpty()
             || setting.kdeName.isEmpty() || setting.description.isEmpty())
@@ -23,12 +25,22 @@ int main()
             return 4;
 
         if (setting.backend == SettingsBackend::KdeModule) {
-            if (!setting.kdeModule.startsWith(QStringLiteral("kcm_"))
+            // Plasma 6 has both kcm_* ids and ids such as
+            // kcmspellchecking, so require the stable kcm prefix rather than
+            // the old underscore convention.
+            if (!setting.kdeModule.startsWith(QStringLiteral("kcm"))
                 || setting.command.size() != 2
                 || setting.command.at(0) != QStringLiteral("kcmshell6")
                 || setting.command.at(1) != setting.kdeModule)
                 return 5;
         }
+        if (setting.kdeModule == QStringLiteral("kcm_networkmanagement"))
+            foundNetworkManagement = true;
+        if (setting.kdeModule == QStringLiteral("kcmspellchecking"))
+            foundSpelling = true;
+        if (setting.kdeModule.contains(QStringLiteral("kwallet"),
+                                       Qt::CaseInsensitive))
+            return 9;
         if (setting.backend == SettingsBackend::Aero7Page
             && PageRegistry::pathFor(setting.page).isEmpty())
             return 6;
@@ -36,6 +48,9 @@ int main()
             && setting.applet.isEmpty())
             return 7;
     }
+
+    if (!foundNetworkManagement || !foundSpelling)
+        return 10;
 
     const QList<PageId> hubs = {
         PageId::DisplaySettings, PageId::NetworkSettings,

@@ -53,5 +53,6 @@ private:
                                 const QString &connState,
                                 bool expanded,
                                 const FwInfo &info);
+    void showNotificationSettings(const QString &currentLogLevel);
     void runUfw(const QStringList &arguments, const QString &successMessage);
 };

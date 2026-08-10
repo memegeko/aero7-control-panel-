@@ -99,7 +99,6 @@ QList<SidebarLink> UserAccountsPage::sidebarSeeAlso()
 {
     return {
         Nav::disabled("Parental Controls"),
-        Nav::to("Credential Manager", PageId::SecurityMaintenance),
     };
 }
 

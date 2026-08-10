@@ -19,6 +19,7 @@ not pretend to be working controls.
 | Network and Sharing Center | Connection links | Routes to Network Settings rather than acting as decorative text |
 | Firewall | Turn on/off | Runs the corresponding `ufw` command through polkit |
 | Firewall | Allow a port or service | Validates a user-provided `ufw allow` rule and applies it through polkit |
+| Firewall | Notification settings | Configures UFW event logging from Off through Full and explains that UFW does not provide per-program popups |
 | Firewall | Restore defaults | Confirms the destructive reset before running `ufw --force reset` |
 | Action Center | Security/account/network/backup tasks | Routes to the appropriate internal page or hub |
 | Power Options | Advanced plan links | Opens only `kcm_powerdevilprofilesconfig`, the original KDE Power Management module |
