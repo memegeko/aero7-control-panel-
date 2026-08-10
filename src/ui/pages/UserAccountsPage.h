@@ -25,6 +25,10 @@ public:
     static QList<SidebarLink> sidebarLinks();
     static QList<SidebarLink> sidebarSeeAlso();
 
+signals:
+    void navigateRequested(PageId page);
+    void refreshRequested();
+
 private:
     struct Account {
         QString userName;      // login name
@@ -33,4 +37,6 @@ private:
         QString picturePath;   // avatar image path, empty if none found
     };
     static Account gatherAccount();
+    void changePicture();
+    void changeDisplayName(const Account &account);
 };

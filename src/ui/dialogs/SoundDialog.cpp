@@ -1,5 +1,6 @@
 #include "SoundDialog.h"
 #include "IconHelper.h"
+#include "LinkLabel.h"
 #include "Branding.h"
 
 #include <QTabWidget>
@@ -22,7 +23,12 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QLineEdit>
 #include <QMessageBox>
+#include <QFileDialog>
+#include <QInputDialog>
 #include <QSettings>
 #include <QMouseEvent>
 #include <QEvent>
@@ -186,6 +192,8 @@ SoundDialog::SoundDialog(QWidget *parent)
     root->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(buttons->button(QDialogButtonBox::Apply), &QPushButton::clicked,
+            this, &SoundDialog::applyRequested);
 
     // Meter only the device on the visible tab (and don't hold the mic open
     // except while the Recording tab is shown).
@@ -252,6 +260,9 @@ QWidget *SoundDialog::buildDeviceTab(DeviceList &dl, bool sinks,
 
     dl.configureBtn = new QPushButton(QStringLiteral("Configure"));
     dl.configureBtn->setCursor(Qt::PointingHandCursor);
+    connect(dl.configureBtn, &QPushButton::clicked, this, [this]() {
+        launchDetached(this, {"kcmshell6", "kcm_pulseaudio"});
+    });
     btnRow->addWidget(dl.configureBtn);
     btnRow->addStretch(1);
 
@@ -517,15 +528,41 @@ QWidget *SoundDialog::buildSoundsTab()
     auto *scheme = new QComboBox;
     scheme->addItems({ Branding::brand("Linux Default"),
                        QStringLiteral("No Sounds") });
-    scheme->setCurrentIndex(
-        s.value(QStringLiteral("sound/scheme"), 0).toInt());
+    scheme->addItems(s.value(QStringLiteral("sound/customSchemes")).toStringList());
+    const QString selectedScheme =
+        s.value(QStringLiteral("sound/schemeName")).toString();
+    const int selectedIndex = scheme->findText(selectedScheme);
+    scheme->setCurrentIndex(selectedIndex >= 0
+        ? selectedIndex : s.value(QStringLiteral("sound/scheme"), 0).toInt());
     scheme->setObjectName(QStringLiteral("soundScheme"));
     schemeRow->addWidget(scheme, 1);
     auto *saveAs = new QPushButton(QStringLiteral("Save As…"));
     schemeRow->addWidget(saveAs);
     auto *del = new QPushButton(QStringLiteral("Delete"));
-    del->setEnabled(false);
+    del->setEnabled(scheme->currentIndex() > 1);
     schemeRow->addWidget(del);
+    connect(saveAs, &QPushButton::clicked, this, [this, scheme, del]() {
+        bool ok = false;
+        const QString name = QInputDialog::getText(
+            this, "Save Sound Scheme", "Sound scheme name:",
+            QLineEdit::Normal, {}, &ok).trimmed();
+        if (!ok || name.isEmpty())
+            return;
+        int index = scheme->findText(name);
+        if (index < 0) {
+            scheme->addItem(name);
+            index = scheme->count() - 1;
+        }
+        scheme->setCurrentIndex(index);
+        del->setEnabled(true);
+    });
+    connect(del, &QPushButton::clicked, this, [scheme, del]() {
+        if (scheme->currentIndex() > 1)
+            scheme->removeItem(scheme->currentIndex());
+        del->setEnabled(scheme->currentIndex() > 1);
+    });
+    connect(scheme, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            del, [del](int index) { del->setEnabled(index > 1); });
     v->addLayout(schemeRow);
     v->addSpacing(2);
 
@@ -573,32 +610,47 @@ QWidget *SoundDialog::buildSoundsTab()
     soundsRow->setSpacing(8);
     auto *soundsCombo = new QComboBox;
     soundsCombo->addItem(QStringLiteral("(None)"));
+    for (const QString &path : {
+             QStringLiteral("/usr/share/sounds/freedesktop/stereo/bell.oga"),
+             QStringLiteral("/usr/share/sounds/freedesktop/stereo/message.oga"),
+             QStringLiteral("/usr/share/sounds/alsa/Front_Center.wav")}) {
+        if (QFile::exists(path))
+            soundsCombo->addItem(QFileInfo(path).completeBaseName(), path);
+    }
     soundsRow->addWidget(soundsCombo, 1);
     auto *test = new QPushButton(QStringLiteral("Test"));
     test->setIcon(themeIcon({"media-playback-start"}));
-    connect(test, &QPushButton::clicked, this, []() {
-        // Best-effort preview of a system sound.
-        for (const char *f : { "/usr/share/sounds/freedesktop/stereo/bell.oga",
-                               "/usr/share/sounds/freedesktop/stereo/message.oga",
-                               "/usr/share/sounds/alsa/Front_Center.wav" }) {
-            if (QFile::exists(QString::fromLatin1(f))) {
-                QProcess::startDetached(QStringLiteral("paplay"),
-                                        { QString::fromLatin1(f) });
-                break;
-            }
-        }
+    connect(test, &QPushButton::clicked, this, [this, soundsCombo]() {
+        const QString path = soundsCombo->currentData().toString();
+        if (!path.isEmpty())
+            launchDetached(this, {QStringLiteral("paplay"), path});
     });
     soundsRow->addWidget(test);
     auto *browse = new QPushButton(QStringLiteral("Browse…"));
+    connect(browse, &QPushButton::clicked, this, [this, soundsCombo]() {
+        const QString path = QFileDialog::getOpenFileName(
+            this, "Choose a sound", QDir::homePath(),
+            "Audio files (*.oga *.ogg *.wav *.flac);;All files (*)");
+        if (path.isEmpty())
+            return;
+        soundsCombo->addItem(QFileInfo(path).completeBaseName(), path);
+        soundsCombo->setCurrentIndex(soundsCombo->count() - 1);
+    });
     soundsRow->addWidget(browse);
     v->addLayout(soundsRow);
 
     // Persist the cosmetic choices when the dialog is accepted.
-    connect(this, &QDialog::accepted, this, [scheme, startup]() {
+    auto save = [scheme, startup]() {
         QSettings st;
-        st.setValue(QStringLiteral("sound/scheme"), scheme->currentIndex());
+        st.setValue(QStringLiteral("sound/schemeName"), scheme->currentText());
+        QStringList custom;
+        for (int i = 2; i < scheme->count(); ++i)
+            custom.append(scheme->itemText(i));
+        st.setValue(QStringLiteral("sound/customSchemes"), custom);
         st.setValue(QStringLiteral("sound/startupSound"), startup->isChecked());
-    });
+    };
+    connect(this, &QDialog::accepted, this, save);
+    connect(this, &SoundDialog::applyRequested, this, save);
 
     return page;
 }
@@ -657,10 +709,12 @@ QWidget *SoundDialog::buildCommunicationsTab()
         v->addSpacing(6);
     }
 
-    connect(this, &QDialog::accepted, this, [group]() {
+    auto save = [group]() {
         QSettings st;
         st.setValue(QStringLiteral("sound/communications"), group->checkedId());
-    });
+    };
+    connect(this, &QDialog::accepted, this, save);
+    connect(this, &SoundDialog::applyRequested, this, save);
 
     v->addStretch(1);
     return page;

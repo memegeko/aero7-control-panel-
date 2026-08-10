@@ -1,6 +1,7 @@
 #include "SystemPage.h"
 #include "Commands.h"
 #include "IconHelper.h"
+#include "LinkLabel.h"
 #include "Win7Ui.h"
 #include "Branding.h"
 #include "dialogs/LinverConfigDialog.h"
@@ -22,6 +23,10 @@
 #include <QHostInfo>
 #include <QHash>
 #include <QRegularExpression>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QProcess>
 #include <cmath>
 
 // Data gathering
@@ -244,9 +249,9 @@ QList<SidebarLink> SystemPage::sidebarLinks()
 {
     return {
         Nav::command("Device Manager", kDeviceManagerCmd),
-        Nav::plain("Remote settings"),
-        Nav::plain("System protection"),
-        Nav::plain("Advanced system settings"),
+        Nav::disabled("Remote settings"),
+        Nav::disabled("System protection"),
+        Nav::disabled("Advanced system settings"),
     };
 }
 
@@ -432,14 +437,47 @@ SystemPage::SystemPage(QScrollArea *sidebar, QWidget *parent)
     nameGrid->setColumnStretch(1, 1);
 
     r = 0;
-    addInfoRow(nameGrid, r++, "Computer name:", info.hostName);
-    addInfoRow(nameGrid, r++, "Full computer name:", info.hostName);
+    auto *computerName = addInfoRow(nameGrid, r++, "Computer name:", info.hostName);
+    auto *fullComputerName = addInfoRow(nameGrid, r++, "Full computer name:", info.hostName);
     addInfoRow(nameGrid, r++, "Computer description:", QString());
     addInfoRow(nameGrid, r++, "Workgroup:", "WORKGROUP");
 
-    // "Change settings" sits at the right edge, on the "Computer name:" row.
-    nameGrid->addWidget(Win7::bodyLabel("Change settings", /*link=*/true),
-                        0, 2, Qt::AlignRight | Qt::AlignVCenter);
+    // Change the real system hostname. The authentication prompt is supplied
+    // by polkit; the Control Panel itself never stores administrator secrets.
+    auto *changeName = new LinkLabel(QStringLiteral("Change settings"));
+    changeName->setToolTip(QStringLiteral("Change the computer name"));
+    connect(changeName, &LinkLabel::clicked, this,
+            [this, computerName, fullComputerName, current = info.hostName]() {
+        bool accepted = false;
+        const QString host = QInputDialog::getText(
+            this, tr("Computer Name"), tr("New computer name:"),
+            QLineEdit::Normal, current, &accepted).trimmed();
+        if (!accepted || host.isEmpty())
+            return;
+        const QRegularExpression valid(
+            QStringLiteral("^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,61}[A-Za-z0-9])?$"));
+        if (!valid.match(host).hasMatch()) {
+            QMessageBox::warning(
+                this, tr("Computer Name"),
+                tr("Use letters, numbers, dots or hyphens. The name must start "
+                   "and end with a letter or number."));
+            return;
+        }
+        const int result = QProcess::execute(
+            QStringLiteral("pkexec"),
+            {QStringLiteral("hostnamectl"), QStringLiteral("set-hostname"), host});
+        if (result != 0) {
+            QMessageBox::warning(
+                this, tr("Computer Name"),
+                tr("The computer name was not changed. Authentication may have "
+                   "been cancelled or hostnamectl reported an error."));
+            return;
+        }
+        computerName->setText(host);
+        fullComputerName->setText(host);
+    });
+    nameGrid->addWidget(changeName, 0, 2,
+                        Qt::AlignRight | Qt::AlignVCenter);
 
     contentV->addLayout(nameGrid);
     contentV->addSpacing(16);

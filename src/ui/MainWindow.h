@@ -23,10 +23,16 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget *parent = nullptr);
 
+    // Opens a registered page through the same history-aware route used by
+    // in-window links. This is used by Start-menu launchers such as
+    // `control --page getting-started`.
+    void openPage(PageId pageId);
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+    enum class ViewMode { Category, LargeIcons, SmallIcons };
     // The shared chrome of a left-nav pane: a width-clipped scroll area, the
     // grey navPane frame, and the text layout (already seeded with the
     // "Control Panel Home" link) that callers fill with their own entries.
@@ -39,6 +45,7 @@ private:
 
     void buildCrumbBar();
     QWidget *buildHomePage();
+    QWidget *buildSearchResultsPage(const QString &query);
     QWidget *buildCategoryPage(const QString &category);
     QScrollArea *buildNavSidebar(const QString &currentCategory);
     QScrollArea *buildSubpageSidebar(const QList<SidebarLink> &links,
@@ -51,6 +58,7 @@ private:
     void setCrumbTrail(const QStringList &trail);
     void navigateHome();
     void navigateTo(const QString &path);
+    void updateSearchResults(const QString &query);
 
     // Open an in-app applet dialog (e.g. "datetime", "datetime:additional"),
     // the Windows-style modal popup for a Control Panel item.
@@ -92,9 +100,11 @@ private:
     // Maps intermediate crumb labels to their navigation paths.
     QHash<QObject *, QString> m_crumbNavLinks;
 
-    // "Control Panel" crumb; a QLabel (not a button) so AeroQt's glass-bar
+    // "Control Panel" crumb; a QLabel (not a button) so Aero7Qt's glass-bar
     // QAbstractButton texture never applies. Clicks go to the home view.
     QLabel *m_homeCrumb = nullptr;
+
+    ViewMode m_viewMode = ViewMode::Category;
 
     QSoundEffect m_navSound;
 

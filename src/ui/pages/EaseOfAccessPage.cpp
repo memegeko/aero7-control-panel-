@@ -15,6 +15,7 @@
 // The KDE modules the tools and settings hand off to.
 static const QStringList kAccess      = { "kcmshell6", "kcm_access" };
 static const QStringList kMagnifier   = { "kcmshell6", "kcm_kwin_effects" };
+static const QStringList kVirtualKeyboard = { "kcmshell6", "kcm_virtualkeyboard" };
 static const QStringList kHighContrast = { "kcmshell6", "kcm_colors" };
 static const QStringList kMouse       = { "kcmshell6", "kcm_mouse" };
 static const QStringList kCursorTheme = { "kcmshell6", "kcm_cursortheme" };
@@ -115,10 +116,10 @@ EaseOfAccessPage::EaseOfAccessPage(QScrollArea *sidebar, QWidget *parent)
         return tile;
     };
 
-    grid->addLayout(makeTile("zoom-in", "Start Magnifier", kMagnifier), 0, 0);
+    grid->addLayout(makeTile("zoom-in", "Configure Magnifier", kMagnifier), 0, 0);
     grid->addLayout(makeTile("preferences-desktop-keyboard",
-                             "Start On-Screen Keyboard", kAccess), 0, 1);
-    grid->addLayout(makeTile("audio-volume-high", "Start Narrator", kAccess), 1, 0);
+                             "Configure On-Screen Keyboard", kVirtualKeyboard), 0, 1);
+    grid->addLayout(makeTile("audio-volume-high", "Configure Screen Reader", kAccess), 1, 0);
     grid->addLayout(makeTile("preferences-desktop-theme",
                              "Set up High Contrast", kHighContrast), 1, 1);
     grid->setColumnStretch(0, 1);
@@ -131,8 +132,8 @@ EaseOfAccessPage::EaseOfAccessPage(QScrollArea *sidebar, QWidget *parent)
     addHeading("Explore all settings");
 
     auto *explore = Win7::label(
-        "When you select these settings, they will automatically start each time "
-        "you sign in.", 9, "#333333");
+        "Open a setting to configure accessibility features for vision, hearing "
+        "and input.", 9, "#333333");
     explore->setWordWrap(true);
     contentV->addWidget(explore);
     contentV->addSpacing(12);

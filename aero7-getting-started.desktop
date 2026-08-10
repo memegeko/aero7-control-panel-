@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Getting Started
+Comment=Discover Aero7 and set up the essentials
+Exec=control --page getting-started
+Icon=dialog-information
+Terminal=false
+Type=Application
+Categories=Qt;KDE;Settings;
+Keywords=Aero7;Welcome;Setup;Help;Control Panel;

@@ -38,8 +38,8 @@ QList<SidebarLink> PerformancePage::sidebarLinks()
         Nav::plain("Adjust visual effects"),
         Nav::plain("Adjust indexing options"),
         Nav::plain("Adjust power settings"),
-        Nav::plain("Open disk cleanup"),
-        Nav::plain("Advanced tools"),
+        Nav::disabled("Open disk cleanup"),
+        Nav::disabled("Advanced tools"),
     };
 }
 
@@ -213,10 +213,10 @@ PerformancePage::PerformancePage(QScrollArea *sidebar, QWidget *parent)
                                   "dialog-question" }).pixmap(20, 20));
         ic->setStyleSheet("background: transparent;");
         h->addWidget(ic, 0, Qt::AlignVCenter);
-        auto *l = new QLabel(text);
+        auto *l = new QLabel(text + "  (help article coming later)");
         QFont f = l->font(); f.setPointSize(9); l->setFont(f);
-        l->setStyleSheet(linkStyle);
-        l->setCursor(Qt::PointingHandCursor);
+        l->setStyleSheet("color: #777777; background: transparent;");
+        l->setToolTip("This help article is not available yet.");
         h->addWidget(l, 0, Qt::AlignVCenter);
         h->addStretch(1);
         return rowW;
@@ -287,10 +287,11 @@ PerformancePage::PerformancePage(QScrollArea *sidebar, QWidget *parent)
                                    "emblem-web", "text-html" }).pixmap(32, 32));
     learnIc->setStyleSheet("background: transparent;");
     lh->addWidget(learnIc, 0, Qt::AlignVCenter);
-    auto *learnLink = new QLabel("Learn more about scores and software\nonline");
+    auto *learnLink = new QLabel(
+        "Learn more about scores and software online\n(help article coming later)");
     { QFont f = learnLink->font(); f.setPointSize(9); learnLink->setFont(f); }
-    learnLink->setStyleSheet(linkStyle);
-    learnLink->setCursor(Qt::PointingHandCursor);
+    learnLink->setStyleSheet("color: #777777; background: transparent;");
+    learnLink->setToolTip("This help article is not available yet.");
     lh->addWidget(learnLink, 0, Qt::AlignVCenter);
     lh->addStretch(1);
     v->addWidget(learnBox);

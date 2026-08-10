@@ -102,7 +102,7 @@ QList<SidebarLink> InstalledUpdatesPage::sidebarLinks()
     return {
         Nav::home("Control Panel Home"),
         Nav::to("Uninstall a program", PageId::ProgramsFeatures),
-        Nav::plain("Turn Linux features on or off"),
+        Nav::disabled("Turn Linux features on or off"),
     };
 }
 
@@ -125,10 +125,11 @@ InstalledUpdatesPage::InstalledUpdatesPage(QScrollArea *sidebar, QWidget *parent
     auto *headerV = new QVBoxLayout;
     headerV->setContentsMargins(28, 0, 28, 0);
     headerV->setSpacing(0);
-    headerV->addWidget(Win7::pageTitle("Uninstall an update"));
+    headerV->addWidget(Win7::pageTitle("View installed updates"));
     headerV->addSpacing(8);
     headerV->addWidget(Win7::label(
-        "To uninstall an update, select it from the list and then click Uninstall or Change."));
+        "Review the latest installed package updates. Arch-based systems do not "
+        "safely uninstall an update independently from its package."));
     contentV->addLayout(headerV);
     contentV->addSpacing(12);
     contentV->addWidget(Win7::hSeparator());

@@ -34,10 +34,10 @@ QList<SidebarLink> LinuxUpdatePage::sidebarLinks()
     // page's own refresh rather than navigating away), so it carries no target.
     return {
         Nav::plain("Check for updates"),
-        Nav::plain("Change settings"),
+        Nav::disabled("Change settings"),
         Nav::plain("View update history"),
-        Nav::plain("Restore hidden updates"),
-        Nav::plain("Updates: frequently asked questions"),
+        Nav::disabled("Restore hidden updates"),
+        Nav::disabled("Updates: frequently asked questions"),
     };
 }
 

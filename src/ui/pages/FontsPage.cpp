@@ -180,17 +180,18 @@ QList<SidebarLink> FontsPage::sidebarLinks()
 {
     return {
         Nav::command("Font settings", kcm("kcm_fonts")),
-        Nav::plain("Get more font information online"),
+        Nav::command("Get more font information online",
+                     {"xdg-open", "https://docs.kde.org/stable5/en/plasma-workspace/kcontrol/fontinst/"}),
         Nav::command("Adjust ClearType text", kcm("kcm_fonts")),
-        Nav::plain("Find a character"),
-        Nav::plain("Change font size"),
+        Nav::command("Find a character", {"kcharselect"}),
+        Nav::to("Change font size", PageId::DisplaySettings),
     };
 }
 
 QList<SidebarLink> FontsPage::sidebarSeeAlso()
 {
     return {
-        Nav::plain("Text Services and Input Language"),
+        Nav::to("Text Services and Input Language", PageId::RegionLanguage),
         Nav::to("Personalization", PageId::Personalization),
     };
 }

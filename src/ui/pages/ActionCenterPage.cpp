@@ -4,6 +4,7 @@
 #include "IconHelper.h"
 #include "Win7Ui.h"
 #include "Branding.h"
+#include "LinkLabel.h"
 
 #include <QScrollArea>
 #include <QLabel>
@@ -49,8 +50,8 @@ QList<SidebarLink> ActionCenterPage::sidebarLinks()
 {
     return {
         Nav::plain("Change Action Center settings"),
-        Nav::command("Change User Account Control settings", kcm("kcm_users")),
-        Nav::plain("View archived messages"),
+        Nav::to("Review administrator approval", PageId::SecurityMaintenance),
+        Nav::disabled("View archived messages"),
         Nav::to("View performance information", PageId::Performance),
     };
 }
@@ -109,8 +110,12 @@ QWidget *ActionCenterPage::buildStatusRow(const QString &item,
     v->addWidget(desc);
 
     if (!link.isEmpty()) {
-        auto *l = bodyLabel(link, /*link=*/true);
+        auto *l = new LinkLabel(link);
         l->setContentsMargins(18, 0, 0, 0);
+        const PageId target = link == "Review network settings"
+                ? PageId::NetworkSettings : PageId::SecurityMaintenance;
+        connect(l, &LinkLabel::clicked, this,
+                [this, target]() { emit navigateRequested(target); });
         v->addWidget(l);
     }
 
@@ -207,14 +212,20 @@ QWidget *ActionCenterPage::buildAlertBox(const QString &title,
     titleLabel->setStyleSheet("color: #000000; background: transparent;");
     textCol->addWidget(titleLabel);
     textCol->addWidget(bodyLabel(description));
-    if (!link.isEmpty())
-        textCol->addWidget(bodyLabel(link, /*link=*/true));
+    if (!link.isEmpty()) {
+        auto *l = new LinkLabel(link);
+        connect(l, &LinkLabel::clicked, this,
+                [this]() { emit navigateRequested(PageId::BackupRestore); });
+        textCol->addWidget(l);
+    }
     innerH->addLayout(textCol, 1);
 
     auto *button = new QPushButton(buttonText);
     button->setCursor(Qt::PointingHandCursor);
     button->setIcon(themeIcon({"preferences-system-backup", "document-save",
                                "drive-harddisk"}));
+    connect(button, &QPushButton::clicked, this,
+            [this]() { emit navigateRequested(PageId::BackupRestore); });
     innerH->addWidget(button, 0, Qt::AlignVCenter);
 
     return frame;
@@ -240,7 +251,12 @@ QWidget *ActionCenterPage::buildBottomTask(
     auto *col = new QVBoxLayout;
     col->setContentsMargins(0, 2, 0, 0);
     col->setSpacing(2);
-    col->addWidget(bodyLabel(title, /*link=*/true));
+    auto *task = new LinkLabel(title);
+    connect(task, &LinkLabel::clicked, this, [this, title]() {
+        emit navigateRequested(title == "Recovery" ? PageId::BackupRestore
+                                                     : PageId::SecurityMaintenance);
+    });
+    col->addWidget(task);
     col->addWidget(bodyLabel(description));
     h->addLayout(col, 1);
 
@@ -298,16 +314,16 @@ ActionCenterPage::ActionCenterPage(QScrollArea *sidebar, QWidget *parent)
             "All Internet security settings are set to their recommended "
             "levels."));
         v->addWidget(buildStatusRow(
-            "User Account Control", info.uacOn ? "On" : "Off",
+            "Administrator approval", info.uacOn ? "On" : "Off",
             info.uacOn
                 ? "polkit will prompt for authentication when programs try to "
                   "make administrative changes."
                 : "polkit authentication is not available.",
-            "Change settings"));
+            "About administrator approval"));
         v->addWidget(buildStatusRow(
-            "Network Access Protection", "Off",
-            "Network Access Protection Agent service is not running.",
-            "What is Network Access Protection?"));
+            "Network security", info.firewallOn ? "Protected" : "Review",
+            "Review the active connection and firewall status.",
+            "Review network settings"));
     }
     contentV->addWidget(buildSection("Security", /*expanded=*/false,
                                      securityRows));
@@ -336,11 +352,11 @@ ActionCenterPage::ActionCenterPage(QScrollArea *sidebar, QWidget *parent)
                                      maintRows));
     contentV->addSpacing(14);
 
-    // The Set up backup alert box shows regardless of section state, as the
-    // Windows Action Center keeps outstanding "action needed" items visible.
+    // Backup availability is shown outside the collapsed maintenance section.
     contentV->addWidget(buildAlertBox(
-        "Set up backup", "Your files are not being backed up.",
-        "Set up backup", "Turn off messages about Backup"));
+        "Backup is not configured",
+        "A dedicated Aero7 backup engine is not installed yet.",
+        "Review backup options", "About backup availability"));
     contentV->addSpacing(24);
 
     // ---- Bottom "If you don't see your problem listed" --------------------
@@ -357,7 +373,7 @@ ActionCenterPage::ActionCenterPage(QScrollArea *sidebar, QWidget *parent)
         "Troubleshooting", "Find and fix problems"), 0, Qt::AlignTop);
     bottomRow->addWidget(buildBottomTask(
         {"document-revert", "chronometer", "system-reboot"},
-        "Recovery", "Restore your computer to an earlier time"), 0,
+        "Recovery", "Review available recovery options"), 0,
         Qt::AlignTop);
     bottomRow->addStretch(1);
     contentV->addLayout(bottomRow);

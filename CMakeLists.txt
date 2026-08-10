@@ -9,10 +9,9 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia Concurrent DBus OpenGL)
 find_package(KF6WidgetsAddons REQUIRED)
-find_package(KF6WindowSystem REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(AeroQt REQUIRED)
+find_package(Aero7Qt REQUIRED)
 find_package(Cups REQUIRED)
 
 add_executable(controlpanel
@@ -20,6 +19,7 @@ add_executable(controlpanel
     src/ui/LinkLabel.h
     src/ui/MainWindow.cpp
     src/ui/PageRegistry.cpp
+    src/ui/SettingsCatalog.cpp
     src/ui/CategoryWidget.cpp
     src/ui/pages/LinuxUpdatePage.cpp
     src/ui/pages/SystemPage.cpp
@@ -31,6 +31,8 @@ add_executable(controlpanel
     src/ui/pages/PowerOptionsPage.cpp
     src/ui/pages/PerformancePage.cpp
     src/ui/pages/PersonalizationPage.cpp
+    src/ui/pages/GettingStartedPage.cpp
+    src/ui/pages/SettingsHubPage.cpp
     src/ui/pages/FontsPage.cpp
     src/ui/pages/UserAccountsPage.cpp
     src/ui/pages/EaseOfAccessPage.cpp
@@ -71,10 +73,9 @@ target_link_libraries(controlpanel PRIVATE
     Qt6::DBus
     Qt6::OpenGL
     KF6::WidgetsAddons
-    KF6::WindowSystem
     ZLIB::ZLIB
     OpenSSL::Crypto
-    AeroQt
+    Aero7Qt::Aero7Qt
     Cups::Cups
 )
 
@@ -85,4 +86,69 @@ set_target_properties(controlpanel PROPERTIES
 )
 
 install(TARGETS controlpanel RUNTIME DESTINATION bin)
-install(FILES linux-controlpanel.desktop DESTINATION share/applications)
+install(FILES
+    linux-controlpanel.desktop
+    aero7-getting-started.desktop
+    DESTINATION share/applications
+)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(page-registry-test
+        tests/PageRegistryTest.cpp
+        src/ui/PageRegistry.cpp
+    )
+    target_include_directories(page-registry-test PRIVATE src/ui)
+    target_link_libraries(page-registry-test PRIVATE Qt6::Core)
+    add_test(NAME page-registry-test COMMAND page-registry-test)
+
+    add_executable(getting-started-page-test
+        tests/GettingStartedPageTest.cpp
+        src/ui/LinkLabel.h
+        src/ui/pages/GettingStartedPage.h
+        src/ui/pages/GettingStartedPage.cpp
+    )
+    target_include_directories(getting-started-page-test PRIVATE
+        src/ui
+        src/ui/pages
+    )
+    target_link_libraries(getting-started-page-test PRIVATE
+        Qt6::Widgets
+        Qt6::Concurrent
+        Aero7Qt::Aero7Qt
+    )
+    add_test(NAME getting-started-page-test COMMAND getting-started-page-test)
+    set_tests_properties(getting-started-page-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+
+    add_executable(settings-catalog-test
+        tests/SettingsCatalogTest.cpp
+        src/ui/PageRegistry.cpp
+        src/ui/SettingsCatalog.cpp
+    )
+    target_include_directories(settings-catalog-test PRIVATE src/ui)
+    target_link_libraries(settings-catalog-test PRIVATE Qt6::Core)
+    add_test(NAME settings-catalog-test COMMAND settings-catalog-test)
+
+    add_executable(settings-hub-page-test
+        tests/SettingsHubPageTest.cpp
+        src/ui/LinkLabel.h
+        src/ui/SettingsCatalog.cpp
+        src/ui/pages/SettingsHubPage.h
+        src/ui/pages/SettingsHubPage.cpp
+    )
+    target_include_directories(settings-hub-page-test PRIVATE
+        src/ui
+        src/ui/pages
+    )
+    target_link_libraries(settings-hub-page-test PRIVATE
+        Qt6::Widgets
+        Qt6::Concurrent
+        Aero7Qt::Aero7Qt
+    )
+    add_test(NAME settings-hub-page-test COMMAND settings-hub-page-test)
+    set_tests_properties(settings-hub-page-test PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    )
+endif()

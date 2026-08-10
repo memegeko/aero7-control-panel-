@@ -36,6 +36,9 @@ public:
                TabSounds = 2, TabCommunications = 3 };
     void showTab(Tab tab);
 
+signals:
+    void applyRequested();
+
 protected:
     // Row clicks select a device in the Playback/Recording lists.
     bool eventFilter(QObject *watched, QEvent *event) override;

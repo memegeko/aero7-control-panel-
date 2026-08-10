@@ -13,6 +13,12 @@
 #include <QFont>
 #include <QFile>
 #include <QHostInfo>
+#include <QPushButton>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QProcess>
+#include <QStandardPaths>
 
 using Win7::ClickableWidget;
 
@@ -80,8 +86,8 @@ FirewallPage::FwInfo FirewallPage::gatherInfo()
 QList<SidebarLink> FirewallPage::sidebarLinks()
 {
     return {
-        Nav::plain("Allow a program or feature through Linux Firewall"),
-        Nav::plain("Change notification settings"),
+        Nav::plain("Allow a port or service through Linux Firewall"),
+        Nav::disabled("Change notification settings"),
         Nav::plain("Turn Linux Firewall on or off"),
         Nav::plain("Restore defaults"),
         Nav::plain("Advanced settings"),
@@ -291,12 +297,58 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
     contentV->addSpacing(10);
 
     auto addHelpLink = [&](const QString &text) {
-        contentV->addWidget(Win7::bodyLabel(text, /*link=*/true), 0, Qt::AlignLeft);
+        auto *label = Win7::label(text + "  (help article coming later)", 9, "#777777");
+        label->setToolTip("This help article is not available yet.");
+        contentV->addWidget(label, 0, Qt::AlignLeft);
         contentV->addSpacing(4);
     };
     addHelpLink("How does a firewall help protect my computer?");
     addHelpLink("What are network locations?");
 
+    contentV->addSpacing(12);
+
+    auto *controls = new QHBoxLayout;
+    controls->setSpacing(8);
+    auto *toggle = new QPushButton(info.enabled ? "Turn firewall off"
+                                                : "Turn firewall on");
+    toggle->setObjectName("firewall-toggle");
+    toggle->setIcon(themeIcon({"preferences-security-firewall", "security-high"}));
+    connect(toggle, &QPushButton::clicked, this, [this, info]() {
+        const QStringList args = info.enabled
+            ? QStringList{"disable"} : QStringList{"--force", "enable"};
+        runUfw(args, info.enabled ? "The firewall was turned off."
+                                  : "The firewall was turned on.");
+    });
+    controls->addWidget(toggle);
+
+    auto *allow = new QPushButton("Allow a port or service…");
+    allow->setObjectName("firewall-allow-service");
+    connect(allow, &QPushButton::clicked, this, [this]() {
+        bool ok = false;
+        const QString rule = QInputDialog::getText(
+            this, "Allow a port or service",
+            "Enter a port, port/protocol, or installed UFW application profile\n"
+            "(examples: 22/tcp, 5353/udp, OpenSSH):",
+            QLineEdit::Normal, {}, &ok).trimmed();
+        if (ok && !rule.isEmpty())
+            runUfw({"allow", rule}, QStringLiteral("Allowed %1.").arg(rule));
+    });
+    controls->addWidget(allow);
+
+    auto *reset = new QPushButton("Restore defaults…");
+    reset->setObjectName("firewall-restore-defaults");
+    connect(reset, &QPushButton::clicked, this, [this]() {
+        if (QMessageBox::warning(
+                this, "Restore firewall defaults",
+                "This removes all custom firewall rules. Continue?",
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+            == QMessageBox::Yes) {
+            runUfw({"--force", "reset"}, "Firewall defaults were restored.");
+        }
+    });
+    controls->addWidget(reset);
+    controls->addStretch(1);
+    contentV->addLayout(controls);
     contentV->addSpacing(12);
 
     // The network panel. ufw has no per-network profiles (no Home/Work/Public
@@ -309,4 +361,38 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
         /*expanded=*/true, info));
 
     contentV->addStretch(1);
+}
+
+void FirewallPage::runUfw(const QStringList &arguments,
+                          const QString &successMessage)
+{
+    if (QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()
+        || QStandardPaths::findExecutable(QStringLiteral("ufw")).isEmpty()) {
+        QMessageBox::warning(
+            this, "Firewall",
+            "The firewall action requires both pkexec and ufw to be installed.");
+        return;
+    }
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            QMessageBox::warning(this, "Firewall",
+                                 "The firewall command could not be started.");
+            process->deleteLater();
+        }
+    });
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, process, successMessage](int code, QProcess::ExitStatus) {
+        const QString error = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        if (code == 0) {
+            QMessageBox::information(this, "Firewall", successMessage);
+            emit refreshRequested();
+        } else if (code != 126 && code != 127) {
+            QMessageBox::warning(this, "Firewall",
+                error.isEmpty() ? "The firewall command failed." : error);
+        }
+        process->deleteLater();
+    });
+    process->start("pkexec", QStringList{"ufw"} + arguments);
 }

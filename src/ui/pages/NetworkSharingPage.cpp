@@ -2,6 +2,7 @@
 #include "Commands.h"
 #include "IconHelper.h"
 #include "Win7Ui.h"
+#include "LinkLabel.h"
 
 #include <QScrollArea>
 #include <QLabel>
@@ -87,7 +88,7 @@ QList<SidebarLink> NetworkSharingPage::sidebarLinks()
 QList<SidebarLink> NetworkSharingPage::sidebarSeeAlso()
 {
     return {
-        Nav::plain("HomeGroup"),
+        Nav::disabled("HomeGroup"),
         Nav::plain("Internet Options"),
         Nav::to("Linux Firewall", PageId::Firewall),
     };
@@ -184,7 +185,10 @@ void NetworkSharingPage::addTask(QVBoxLayout *into, const QStringList &iconNames
     textCol->setContentsMargins(0, 0, 0, 0);
     textCol->setSpacing(1);
 
-    textCol->addWidget(Win7::bodyLabel(title, /*link=*/true));
+    auto *task = new LinkLabel(title);
+    connect(task, &LinkLabel::clicked, this,
+            [this]() { emit settingsRequested(); });
+    textCol->addWidget(task);
 
     auto *descLabel = Win7::label(description, 9, "#333333");
     descLabel->setWordWrap(true);
@@ -249,8 +253,10 @@ NetworkSharingPage::NetworkSharingPage(QScrollArea *sidebar, QWidget *parent)
     mapRow->addStretch(1);
 
     // "See full map" link, pinned to the top-right of the map row.
-    mapRow->addWidget(Win7::bodyLabel("See full map", /*link=*/true),
-                      0, Qt::AlignTop);
+    auto *fullMap = new LinkLabel("See full map");
+    connect(fullMap, &LinkLabel::clicked, this,
+            [this]() { emit settingsRequested(); });
+    mapRow->addWidget(fullMap, 0, Qt::AlignTop);
 
     contentV->addLayout(mapRow);
     contentV->addSpacing(18);
@@ -260,9 +266,11 @@ NetworkSharingPage::NetworkSharingPage(QScrollArea *sidebar, QWidget *parent)
     // faint rule trailing off to its right, and an optional link pinned past the
     // rule at the far right.
     auto addHeading = [&](const QString &text, const QString &trailingLink) {
-        QWidget *trailing = trailingLink.isEmpty()
-            ? nullptr
-            : Win7::bodyLabel(trailingLink, /*link=*/true);
+        LinkLabel *trailing = trailingLink.isEmpty()
+            ? nullptr : new LinkLabel(trailingLink);
+        if (trailing)
+            connect(trailing, &LinkLabel::clicked, this,
+                    [this]() { emit settingsRequested(); });
         contentV->addLayout(
             Win7::sectionHeading(text, trailing, nullptr, "#000000"));
         contentV->addSpacing(6);
@@ -298,7 +306,10 @@ NetworkSharingPage::NetworkSharingPage(QScrollArea *sidebar, QWidget *parent)
     netName->setStyleSheet("color: #000000; background: transparent;");
     nameCol->addWidget(netName);
 
-    nameCol->addWidget(Win7::bodyLabel("Public network", /*link=*/true));
+    auto *publicNetwork = new LinkLabel("Public network");
+    connect(publicNetwork, &LinkLabel::clicked, this,
+            [this]() { emit settingsRequested(); });
+    nameCol->addWidget(publicNetwork);
     activeRow->addLayout(nameCol);
 
     activeRow->addSpacing(20);
@@ -344,8 +355,10 @@ NetworkSharingPage::NetworkSharingPage(QScrollArea *sidebar, QWidget *parent)
     connIcon->setStyleSheet("background: transparent;");
     connH->addWidget(connIcon, 0, Qt::AlignVCenter);
 
-    connH->addWidget(Win7::bodyLabel(info.connectionName, /*link=*/true),
-                     0, Qt::AlignVCenter);
+    auto *connection = new LinkLabel(info.connectionName);
+    connect(connection, &LinkLabel::clicked, this,
+            [this]() { emit settingsRequested(); });
+    connH->addWidget(connection, 0, Qt::AlignVCenter);
     connH->addStretch(1);
 
     detailGrid->addWidget(connCell, 1, 1, Qt::AlignLeft | Qt::AlignVCenter);

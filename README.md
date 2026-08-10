@@ -28,8 +28,9 @@ together in a familiar Control Panel-style interface for the Aero7 desktop.
 **Aero7 Control Panel is an independent project and is not affiliated with or endorsed by Microsoft Corporation. Windows is a trademark of the Microsoft group of companies.**
 
 > [!WARNING]
-> Aero7 Control Panel is under active development. Several pages are incomplete,
-> experimental, or still use placeholder actions. Test changes carefully.
+> Aero7 Control Panel is under active development. Some settings use an
+> individual KDE Control Module as a documented compatibility backend while a
+> native Aero7 implementation is developed.
 
 ## About the project
 
@@ -48,16 +49,39 @@ desktop.
 
 Current functionality includes:
 
+- Aero7 Getting Started page with internal links to working settings pages
+- Catalog-driven settings hubs that preserve every original KDE setting name
+- Search and large/small-icon views backed by the same settings catalog
 - Windows 7-style Control Panel home screen organized by category
 - Windows Update-style page backed by real `pacman` update checks
 - Installed update history read from `pacman.log`
 - Programs and Features package listing and removal
 - Network and Sharing Center overview
-- Firewall status and rule summary through `ufw`
+- Firewall status, enable/disable, allow-rule and reset controls through `ufw`
 - Power Options
 - Windows Experience Index-style performance benchmark
 
 Aero7-specific pages and integrations will be added as development continues.
+
+### Getting Started
+
+The **Getting Started** Start-menu application opens an internal Control Panel
+page with a compact three-column launch point for common setup tasks. Every
+task now routes to a real internal page or catalog-backed settings hub,
+including Application Compatibility, Backup and Restore, and Display Settings.
+The page can also be found through Control Panel search. The Learn about Aero7
+actions open the
+[official Aero7 website](https://aero7.miku-dayo.com/).
+
+### KDE settings map
+
+The wiki-ready [settings map](docs/KDE-SETTINGS-MAP.md) records each Aero7
+label, its original KDE name, its KCM or native backend, and its replacement
+state. Original KDE names remain traceable even when the public Aero7 wording
+is improved later. Missing optional KCMs produce a visible explanation instead
+of a dead button. The companion [function audit](docs/CONTROL-PANEL-FUNCTIONS.md)
+records what every main page action currently does and which controls are
+intentionally unavailable.
 
 ## Installation
 
@@ -81,17 +105,17 @@ Aero7 desktop.
 | `pkexec` | Privileged package-management actions |
 | `pacman` | Updates, installed packages, and package removal |
 | `ufw` | Firewall status and rules |
+| `kcmshell6` | Opens an individual KDE setting used as a compatibility backend |
 
 ## Roadmap
 
 Planned Aero7 expansion areas include:
 
-- A Getting Started page for new Aero7 installations
 - Aero7 appearance, theme, sound, and desktop controls
-- KDE Plasma settings presented inside one consistent interface
+- Replace KDE compatibility bridges with direct Linux/KDE service APIs where practical
 - Hardware, devices, networking, users, storage, and security pages
 - Update, repair, recovery, and Aero7 repository management
-- Removal of placeholder actions in favor of real system integrations
+- More native Aero7 controls for advanced settings
 - Improved privilege separation and clear confirmation for system changes
 
 Track planned work and report problems in the

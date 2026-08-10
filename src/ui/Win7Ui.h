@@ -240,9 +240,11 @@ inline QWidget *dropdownLabel(const QString &text, int pt = 9,
     auto *h = new QHBoxLayout(w);
     h->setContentsMargins(0, 0, 0, 0);
     h->setSpacing(5);
-    h->addWidget(label(text, pt, color));
-    h->addWidget(arrowLabel(Qt::DownArrow, QColor(0x3C, 0x3C, 0x3C), 6),
+    Q_UNUSED(color);
+    h->addWidget(label(text, pt, "#777777"));
+    h->addWidget(arrowLabel(Qt::DownArrow, QColor(0x88, 0x88, 0x88), 6),
                  0, Qt::AlignVCenter);
+    w->setToolTip("This command menu is not available on this page.");
     return w;
 }
 
@@ -414,7 +416,7 @@ inline QFrame *statusPanel(int height, QHBoxLayout **layoutOut = nullptr)
 // The shared column-list configuration for the ribbon pages' QTreeWidgets:
 // frameless, flat Win7 header, single selection. Styling is scoped to the
 // header only, so the tree body and its scroll bars keep the real Qt style
-// (the scroll bars are native app-wide: main() strips AeroQt's QScrollBar
+// (the scroll bars are native app-wide: main() strips Aero7Qt's QScrollBar
 // rules out of the application stylesheet).
 inline void configureListTree(QTreeWidget *tree)
 {

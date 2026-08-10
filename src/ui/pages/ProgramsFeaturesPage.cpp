@@ -520,7 +520,7 @@ QList<SidebarLink> ProgramsFeaturesPage::sidebarLinks()
 {
     return {
         Nav::to("View installed updates", PageId::InstalledUpdates),
-        Nav::plain("Turn Linux features on or off"),
+        Nav::disabled("Turn Linux features on or off"),
     };
 }
 

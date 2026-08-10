@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "CategoryWidget.h"
 #include "IconHelper.h"
+#include "LinkLabel.h"
 #include "Win7Ui.h"
 
 #include <QApplication>
@@ -31,12 +32,16 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QMessageBox>
-#include <AeroQt/navbuttons.h>
-#include <AeroQt/insetwindow.h>
+#include <QSignalBlocker>
+#include <Aero7Qt/glassframe.h>
+#include <Aero7Qt/navigationbuttons.h>
+#include <algorithm>
 #include "Categories.h"
 #include "Branding.h"
 #include "PageId.h"
 #include "PageRegistry.h"
+#include "SettingsCatalog.h"
+#include "SettingsHubPage.h"
 #include "Commands.h"
 #include "pages/LinuxUpdatePage.h"
 #include "pages/SystemPage.h"
@@ -49,6 +54,7 @@
 #include "pages/PerformancePage.h"
 #include "dialogs/SoundDialog.h"
 #include "pages/PersonalizationPage.h"
+#include "pages/GettingStartedPage.h"
 #include "pages/FontsPage.h"
 #include "pages/UserAccountsPage.h"
 #include "pages/EaseOfAccessPage.h"
@@ -80,6 +86,10 @@ MainWindow::MainWindow(QWidget *parent)
     auto *mainLayout = new QVBoxLayout(central);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
+    // The original AeroQt helper inserted this widget into its custom frame.
+    // Aero7Qt only styles the region, so keep the real header in our own
+    // layout. This also makes the breadcrumb/search bar reliable on Wayland.
+    mainLayout->addWidget(m_crumbBar);
 
     m_scroll = new QScrollArea;
     m_scroll->setWidgetResizable(true);
@@ -95,10 +105,22 @@ MainWindow::MainWindow(QWidget *parent)
     // Aero glass on crumb bar: must be after setCentralWidget
     setAttribute(Qt::WA_TranslucentBackground, true);
     setAttribute(Qt::WA_NoSystemBackground, true);
-    Aero::makeInsetWindow(this, central, m_crumbBar, nullptr);
+    Aero7::applyGlassFrame(this, central, m_crumbBar, nullptr);
 
     // Intercept mouse side-button events from any child widget.
     qApp->installEventFilter(this);
+}
+
+void MainWindow::openPage(PageId pageId)
+{
+    if (pageId == PageId::Home) {
+        navigateHome();
+        return;
+    }
+
+    const QString path = PageRegistry::pathFor(pageId);
+    if (!path.isEmpty())
+        navigateTo(path);
 }
 
 void MainWindow::buildCrumbBar()
@@ -110,7 +132,7 @@ void MainWindow::buildCrumbBar()
     layout->setSpacing(2);
 
     // Aero-style back/forward nav buttons
-    auto *navBtns = new Aero::NavButtons(m_crumbBar);
+    auto *navBtns = new Aero7::NavigationButtons(m_crumbBar);
     m_backBtn = navBtns->back();
     m_forwardBtn = navBtns->forward();
     m_backBtn->setEnabled(false);
@@ -120,14 +142,14 @@ void MainWindow::buildCrumbBar()
     layout->addWidget(navBtns);
     layout->addSpacing(4);
 
-    // Address path box: icon + crumb trail. Reuse AeroQt's glass-entry texture so
-    // this box matches the search field. Scoped with #addressBox so child labels
-    // are unaffected.
+    // Address path box: icon + crumb trail. The clean-room Aero7Qt layer does
+    // not ship bitmap field textures, so draw the compact glass-like field
+    // directly and keep the rule scoped so child labels are unaffected.
     auto *pathBox = new QWidget;
     pathBox->setObjectName("addressBox");
     pathBox->setStyleSheet(
-        "#addressBox { border-image: url(:/AeroQt/transpbg/entry/normal.png) 4 4 4 4 repeat; border-width: 4px; }"
-        "#addressBox:hover { border-image: url(:/AeroQt/transpbg/entry/hover.png) 4 4 4 4 repeat; }"
+        "#addressBox { background: rgba(255,255,255,235); border: 1px solid #7f9db9; border-radius: 2px; }"
+        "#addressBox:hover { border-color: #3c7fb1; }"
     );
     pathBox->setFixedHeight(24);
     m_pathLayout = new QHBoxLayout(pathBox);
@@ -138,10 +160,10 @@ void MainWindow::buildCrumbBar()
     layout->addSpacing(6);
 
     // Search box. The crumb bar already carries _Aero_transpbg=true (set by
-    // makeInsetWindow), so AeroQt's stylesheet gives plain QLineEdits a
+    // applyGlassFrame), so Aero7Qt's stylesheet gives plain QLineEdits a
     // translucent glass background that brightens on hover. We must NOT set our
     // own border/background or it overrides that border-image. On focus we swap
-    // to a solid white field (AeroQt has no focus-state glass image).
+    // to a solid white field (Aero7Qt has no focus-state glass image).
     m_searchBox = new QLineEdit;
     m_searchBox->setPlaceholderText("Search Control Panel");
     m_searchBox->setFixedWidth(190);
@@ -156,6 +178,8 @@ void MainWindow::buildCrumbBar()
             f.setItalic(text.isEmpty());
             m_searchBox->setFont(f);
         });
+    QObject::connect(m_searchBox, &QLineEdit::textChanged, this,
+                     &MainWindow::updateSearchResults);
     QFont searchFont = m_searchBox->font();
     searchFont.setItalic(true);
     m_searchBox->setFont(searchFont);
@@ -169,7 +193,7 @@ void MainWindow::buildCrumbBar()
                     " background: #FFFFFF; color: #000000; }"
                 );
             } else {
-                // Fall back to AeroQt's translucent glass entry
+                // Fall back to Aero7Qt's translucent glass entry
                 m_searchBox->setStyleSheet(QString());
             }
         });
@@ -223,8 +247,15 @@ void MainWindow::setCrumbTrail(const QStringList &trail)
                 "QLabel:hover { color: #003399; }"
             );
             label->installEventFilter(this);
-            // Build the partial path up to this segment.
-            m_crumbNavLinks.insert(label, trail.mid(0, i + 1).join('/'));
+            // Build the partial path up to this segment. "All Control Panel
+            // Items" is the home/root view rather than a routable category,
+            // so store an empty path for that Windows 7-style breadcrumb.
+            const QString partialPath = trail.mid(0, i + 1).join('/');
+            m_crumbNavLinks.insert(
+                label,
+                partialPath == QStringLiteral("All Control Panel Items")
+                    ? QString()
+                    : partialPath);
         }
         m_pathLayout->addWidget(label);
     }
@@ -286,7 +317,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             if (me->button() == Qt::LeftButton) {
                 const QString path = crumbIt.value();
                 QMetaObject::invokeMethod(this,
-                    [this, path]() { navigateTo(path); },
+                    [this, path]() {
+                        if (path.isEmpty()) navigateHome();
+                        else                navigateTo(path);
+                    },
                     Qt::QueuedConnection);
             }
             return true;
@@ -370,6 +404,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 // canonical PageId so the strings live in exactly one place (PageRegistry). The
 // select-updates entry is Linux Update's in-window "select updates" sub-view.
 static const QString kUpdatePath           = PageRegistry::pathFor(PageId::LinuxUpdate);
+static const QString kGettingStartedPath   = PageRegistry::pathFor(PageId::GettingStarted);
 static const QString kSelectPath           = PageRegistry::pathFor(PageId::SelectUpdates);
 static const QString kProgramsFeaturesPath = PageRegistry::pathFor(PageId::ProgramsFeatures);
 static const QString kInstalledUpdatesPath = PageRegistry::pathFor(PageId::InstalledUpdates);
@@ -388,20 +423,7 @@ static const QString kDevicesPrintersPath  = PageRegistry::pathFor(PageId::Devic
 // render it. Category-level paths are validated separately via detailGroupsFor.
 static bool isRoutableSubPath(const QString &path)
 {
-    return path == kUpdatePath || path == kSelectPath
-        || path == kProgramsFeaturesPath
-        || path == kInstalledUpdatesPath
-        || path == kNetworkSharingPath
-        || path == kFirewallPath
-        || path == kActionCenterPath
-        || path == kPowerOptionsPath
-        || path == kPerformancePath
-        || path == kPersonalizationPath
-        || path == kFontsPath
-        || path == kUserAccountsPath
-        || path == kEaseOfAccessPath
-        || path == kDevicesPrintersPath
-        || path == QStringLiteral("System and Security/System");
+    return PageRegistry::idForPath(path) != PageId::None;
 }
 
 void MainWindow::navigateHome()
@@ -489,7 +511,14 @@ void MainWindow::showEntry(const QString &entry)
         // Sub-page path: "Category/SubPage[/SubView]"
         QStringList parts = entry.split('/');
         setCrumbTrail(parts);
-        if (parts.size() >= 2 && parts[0] == "System and Security"
+        if (entry == kGettingStartedPath) {
+            auto *gettingStarted = new GettingStartedPage;
+            QObject::connect(gettingStarted, &GettingStartedPage::navigateRequested,
+                             this, [this](PageId id) {
+                                 navigateTo(PageRegistry::pathFor(id));
+                             }, Qt::QueuedConnection);
+            m_scroll->setWidget(gettingStarted);
+        } else if (parts.size() >= 2 && parts[0] == "System and Security"
             && parts[1] == "Linux Update") {
             auto *sidebar = buildSubpageSidebar(
                 LinuxUpdatePage::sidebarLinks(),
@@ -541,17 +570,31 @@ void MainWindow::showEntry(const QString &entry)
             auto *sidebar = buildSubpageSidebar(
                 NetworkSharingPage::sidebarLinks(),
                 NetworkSharingPage::sidebarSeeAlso());
-            m_scroll->setWidget(new NetworkSharingPage(sidebar));
+            auto *network = new NetworkSharingPage(sidebar);
+            QObject::connect(network, &NetworkSharingPage::settingsRequested,
+                             this, [this]() {
+                                 navigateTo(PageRegistry::pathFor(PageId::NetworkSettings));
+                             }, Qt::QueuedConnection);
+            m_scroll->setWidget(network);
         } else if (entry == kFirewallPath) {
             auto *sidebar = buildSubpageSidebar(
                 FirewallPage::sidebarLinks(),
                 FirewallPage::sidebarSeeAlso());
-            m_scroll->setWidget(new FirewallPage(sidebar));
+            auto *firewall = new FirewallPage(sidebar);
+            QObject::connect(firewall, &FirewallPage::refreshRequested,
+                             this, [this, entry]() { showEntry(entry); },
+                             Qt::QueuedConnection);
+            m_scroll->setWidget(firewall);
         } else if (entry == kActionCenterPath) {
             auto *sidebar = buildSubpageSidebar(
                 ActionCenterPage::sidebarLinks(),
                 ActionCenterPage::sidebarSeeAlso());
-            m_scroll->setWidget(new ActionCenterPage(sidebar));
+            auto *action = new ActionCenterPage(sidebar);
+            QObject::connect(action, &ActionCenterPage::navigateRequested,
+                             this, [this](PageId id) {
+                                 navigateTo(PageRegistry::pathFor(id));
+                             }, Qt::QueuedConnection);
+            m_scroll->setWidget(action);
         } else if (entry == kPowerOptionsPath) {
             auto *sidebar = buildSubpageSidebar(
                 PowerOptionsPage::sidebarLinks(),
@@ -571,7 +614,15 @@ void MainWindow::showEntry(const QString &entry)
             auto *sidebar = buildSubpageSidebar(
                 UserAccountsPage::sidebarLinks(),
                 UserAccountsPage::sidebarSeeAlso());
-            m_scroll->setWidget(new UserAccountsPage(sidebar));
+            auto *users = new UserAccountsPage(sidebar);
+            QObject::connect(users, &UserAccountsPage::navigateRequested,
+                             this, [this](PageId id) {
+                                 navigateTo(PageRegistry::pathFor(id));
+                             }, Qt::QueuedConnection);
+            QObject::connect(users, &UserAccountsPage::refreshRequested,
+                             this, [this, entry]() { showEntry(entry); },
+                             Qt::QueuedConnection);
+            m_scroll->setWidget(users);
         } else if (entry == kEaseOfAccessPath) {
             auto *sidebar = buildSubpageSidebar(
                 EaseOfAccessPage::sidebarLinks(),
@@ -580,6 +631,65 @@ void MainWindow::showEntry(const QString &entry)
         } else if (entry == kDevicesPrintersPath) {
             // A shell folder, not a Control Panel item: no left-nav sidebar.
             m_scroll->setWidget(new DevicesAndPrintersPage());
+        } else {
+            // All remaining registered sub-pages are catalog-backed Aero7
+            // settings hubs. They replace the System Settings landing page,
+            // while individual KDE modules remain compatibility backends until
+            // their native Aero7 implementation is complete.
+            const PageId pageId = PageRegistry::idForPath(entry);
+            switch (pageId) {
+            case PageId::DisplaySettings:
+            case PageId::NetworkSettings:
+            case PageId::RegionLanguage:
+            case PageId::TaskbarStartMenu:
+            case PageId::DefaultPrograms:
+            case PageId::InputDevices:
+            case PageId::StartupShutdown:
+            case PageId::WindowBehavior:
+            case PageId::SecurityMaintenance:
+            case PageId::StorageAdministration:
+            case PageId::InternetOptions:
+            case PageId::FolderOptions:
+            case PageId::AutoPlay:
+            case PageId::BackupRestore: {
+                auto *sidebar = buildSubpageSidebar({});
+                QString titleOverride;
+                QString descriptionOverride;
+                if (pageId == PageId::InternetOptions) {
+                    titleOverride = "Internet Options";
+                    descriptionOverride =
+                        "Configure connections and Internet access. Browser-specific "
+                        "home pages, add-ons and history remain in each browser.";
+                } else if (pageId == PageId::FolderOptions) {
+                    titleOverride = "Folder Options";
+                    descriptionOverride =
+                        "Configure personal folders, file search, associations and recent items.";
+                } else if (pageId == PageId::AutoPlay) {
+                    titleOverride = "AutoPlay";
+                    descriptionOverride =
+                        "Choose default applications and actions for removable media and devices.";
+                } else if (pageId == PageId::BackupRestore) {
+                    titleOverride = "Backup and Restore";
+                    descriptionOverride =
+                        "Review storage and automatic mounting. A dedicated backup engine is not installed yet.";
+                }
+                auto *hub = new SettingsHubPage(
+                    SettingsCatalog::sectionForPage(pageId), sidebar,
+                    titleOverride, descriptionOverride);
+                QObject::connect(hub, &SettingsHubPage::navigateRequested,
+                                 this, [this](PageId id) {
+                                     navigateTo(PageRegistry::pathFor(id));
+                                 }, Qt::QueuedConnection);
+                QObject::connect(hub, &SettingsHubPage::appletRequested,
+                                 this, [this](const QString &id) {
+                                     openApplet(id);
+                                 }, Qt::QueuedConnection);
+                m_scroll->setWidget(hub);
+                break;
+            }
+            default:
+                break;
+            }
         }
     } else {
         setCrumbTrail({ entry });
@@ -668,15 +778,78 @@ QWidget *MainWindow::buildHomePage()
 
     // The Win7 "View by:" dropdown: blue text ending in the shared Aero arrow,
     // orange on hover, opening its menu on click.
-    auto *categoryBtn = new Win7::MenuButton("Category");
+    const QString viewText = m_viewMode == ViewMode::Category
+        ? QStringLiteral("Category")
+        : m_viewMode == ViewMode::LargeIcons
+            ? QStringLiteral("Large icons") : QStringLiteral("Small icons");
+    auto *categoryBtn = new Win7::MenuButton(viewText);
     auto *viewMenu = new QMenu(categoryBtn);
-    viewMenu->addAction("Category");
-    viewMenu->addAction("Large icons");
-    viewMenu->addAction("Small icons");
+    auto setView = [this](ViewMode mode) {
+        if (m_viewMode == mode)
+            return;
+        m_viewMode = mode;
+        showEntry(QString());
+    };
+    QObject::connect(viewMenu->addAction("Category"), &QAction::triggered,
+                     this, [setView]() { setView(ViewMode::Category); });
+    QObject::connect(viewMenu->addAction("Large icons"), &QAction::triggered,
+                     this, [setView]() { setView(ViewMode::LargeIcons); });
+    QObject::connect(viewMenu->addAction("Small icons"), &QAction::triggered,
+                     this, [setView]() { setView(ViewMode::SmallIcons); });
     categoryBtn->setMenu(viewMenu);
     headRow->addWidget(categoryBtn);
 
     innerV->addLayout(headRow);
+
+    if (m_viewMode != ViewMode::Category) {
+        // Icon views are catalog-driven, so every displayed item has a tested
+        // destination and the KDE-origin metadata remains available to search
+        // and documentation without exposing System Settings itself.
+        auto *gridWidget = new QWidget;
+        gridWidget->setStyleSheet("background: transparent;");
+        auto *grid = new QGridLayout(gridWidget);
+        grid->setContentsMargins(0, 0, 0, 0);
+        grid->setHorizontalSpacing(20);
+        grid->setVerticalSpacing(m_viewMode == ViewMode::LargeIcons ? 14 : 8);
+
+        QList<SettingDefinition> entries = SettingsCatalog::all();
+        std::sort(entries.begin(), entries.end(),
+                  [](const SettingDefinition &a, const SettingDefinition &b) {
+                      return QString::localeAwareCompare(a.aeroName, b.aeroName) < 0;
+                  });
+        const int columns = m_viewMode == ViewMode::LargeIcons ? 3 : 4;
+        const int iconSize = m_viewMode == ViewMode::LargeIcons ? 32 : 16;
+        for (int i = 0; i < entries.size(); ++i) {
+            const SettingDefinition setting = entries.at(i);
+            auto *cell = new QWidget;
+            cell->setStyleSheet("background: transparent;");
+            auto *h = new QHBoxLayout(cell);
+            h->setContentsMargins(2, 2, 2, 2);
+            h->setSpacing(8);
+            auto *icon = new QLabel;
+            icon->setFixedSize(iconSize, iconSize);
+            icon->setPixmap(resolveIcon(setting.iconName).pixmap(iconSize, iconSize));
+            icon->setStyleSheet("background: transparent;");
+            h->addWidget(icon, 0, Qt::AlignTop);
+            auto *label = new QLabel(setting.aeroName);
+            label->setObjectName(QStringLiteral("all-item-") + setting.key);
+            label->setToolTip(QStringLiteral("Original KDE name: %1").arg(setting.kdeName));
+            label->setWordWrap(true);
+            label->setCursor(Qt::PointingHandCursor);
+            label->setStyleSheet(
+                "QLabel { color: #1F4E99; background: transparent; }"
+                "QLabel:hover { color: #0033AA; text-decoration: underline; }");
+            label->installEventFilter(this);
+            registerLinkTarget(label, SettingsCatalog::targetForSetting(setting));
+            h->addWidget(label, 1, Qt::AlignVCenter);
+            grid->addWidget(cell, i / columns, i % columns);
+        }
+        for (int c = 0; c < columns; ++c)
+            grid->setColumnStretch(c, 1);
+        innerV->addWidget(gridWidget);
+        innerV->addStretch(1);
+        return content;
+    }
 
     // Two independent columns. The real Control Panel stacks each column as its
     // own list with even gaps; it does NOT align rows across the two columns, so
@@ -714,8 +887,26 @@ QWidget *MainWindow::buildHomePage()
                     { "Optimize visual display",       kEaseOfAccessPath },
                 };
                 const auto it = knownTaskPaths.constFind(task);
-                navigateTo(it != knownTaskPaths.constEnd() ? it.value()
-                                                           : category);
+                if (it != knownTaskPaths.constEnd()) {
+                    navigateTo(it.value());
+                    return;
+                }
+                const LinkTarget target =
+                    SettingsCatalog::targetForLegacyLabel(task);
+                switch (target.kind) {
+                case LinkTarget::Page:
+                    navigateTo(PageRegistry::pathFor(target.page));
+                    break;
+                case LinkTarget::Applet:
+                    openApplet(target.applet);
+                    break;
+                case LinkTarget::Command:
+                    launchDetached(this, target.command);
+                    break;
+                default:
+                    navigateTo(category);
+                    break;
+                }
             }, Qt::QueuedConnection);
         (i % 2 == 0 ? colLeft : colRight)->addWidget(w);
     }
@@ -729,6 +920,137 @@ QWidget *MainWindow::buildHomePage()
     innerV->addStretch(1);
 
     return content;
+}
+
+QWidget *MainWindow::buildSearchResultsPage(const QString &query)
+{
+    auto *page = new QWidget;
+    page->setObjectName("searchResultsPage");
+    page->setStyleSheet("#searchResultsPage { background: #FFFFFF; }");
+
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(42, 26, 42, 26);
+    layout->setSpacing(18);
+
+    auto *title = Win7::pageTitle(
+        tr("Search results for: %1").arg(query.trimmed()), 12, "#003399");
+    layout->addWidget(title);
+    layout->addWidget(Win7::hairline());
+
+    const QString needle = query.trimmed();
+    const QStringList gettingStartedTerms = {
+        QStringLiteral("Getting Started"),
+        QStringLiteral("Aero7 welcome setup essentials help")
+    };
+    bool matchesGettingStarted = false;
+    for (const QString &term : gettingStartedTerms) {
+        if (term.contains(needle, Qt::CaseInsensitive)) {
+            matchesGettingStarted = true;
+            break;
+        }
+    }
+
+    bool foundAny = false;
+    if (matchesGettingStarted) {
+        foundAny = true;
+        auto *row = new QWidget;
+        row->setStyleSheet("background: transparent;");
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(8, 4, 8, 4);
+        rowLayout->setSpacing(14);
+
+        auto *icon = new QLabel;
+        icon->setPixmap(themeIcon({"help-about", "dialog-information",
+                                   "preferences-system"}).pixmap(40, 40));
+        icon->setFixedSize(40, 40);
+        rowLayout->addWidget(icon, 0, Qt::AlignTop);
+
+        auto *text = new QVBoxLayout;
+        text->setContentsMargins(0, 0, 0, 0);
+        text->setSpacing(2);
+        auto *link = new LinkLabel(tr("Getting Started"));
+        Win7::setPointSize(link, 11);
+        QObject::connect(link, &LinkLabel::clicked, this, [this]() {
+            QMetaObject::invokeMethod(this, [this]() {
+                {
+                    const QSignalBlocker blocker(m_searchBox);
+                    m_searchBox->clear();
+                    QFont font = m_searchBox->font();
+                    font.setItalic(true);
+                    m_searchBox->setFont(font);
+                }
+                navigateTo(kGettingStartedPath);
+            }, Qt::QueuedConnection);
+        });
+        text->addWidget(link);
+        text->addWidget(
+            Win7::label(tr("Discover Aero7 and set up the essentials."),
+                        9, "#333333"));
+        rowLayout->addLayout(text, 1);
+        layout->addWidget(row);
+    }
+
+    for (const SettingDefinition &setting : SettingsCatalog::all()) {
+        const QString haystack = setting.aeroName + ' ' + setting.kdeName + ' '
+            + setting.kdeModule + ' ' + setting.description;
+        if (!haystack.contains(needle, Qt::CaseInsensitive))
+            continue;
+        foundAny = true;
+        auto *row = new QWidget;
+        row->setStyleSheet("background: transparent;");
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(8, 4, 8, 4);
+        rowLayout->setSpacing(14);
+        auto *icon = new QLabel;
+        icon->setPixmap(resolveIcon(setting.iconName).pixmap(32, 32));
+        icon->setFixedSize(32, 32);
+        rowLayout->addWidget(icon, 0, Qt::AlignTop);
+        auto *text = new QVBoxLayout;
+        text->setContentsMargins(0, 0, 0, 0);
+        text->setSpacing(1);
+        auto *link = new QLabel(setting.aeroName);
+        link->setObjectName(QStringLiteral("search-result-") + setting.key);
+        link->setCursor(Qt::PointingHandCursor);
+        link->setStyleSheet(
+            "QLabel { color: #1F4E99; background: transparent; }"
+            "QLabel:hover { color: #0033AA; text-decoration: underline; }");
+        link->installEventFilter(this);
+        registerLinkTarget(link, SettingsCatalog::targetForSetting(setting));
+        text->addWidget(link);
+        text->addWidget(Win7::label(
+            QStringLiteral("%1  ·  Original KDE name: %2")
+                .arg(setting.description, setting.kdeName), 8, "#555555"));
+        rowLayout->addLayout(text, 1);
+        layout->addWidget(row);
+    }
+
+    if (!foundAny) {
+        layout->addWidget(
+            Win7::label(tr("No Control Panel items match your search."),
+                        9, "#333333"));
+    }
+
+    layout->addStretch();
+    return page;
+}
+
+void MainWindow::updateSearchResults(const QString &query)
+{
+    if (query.trimmed().isEmpty()) {
+        const QString current = m_historyIndex >= 0
+            ? m_history.at(m_historyIndex)
+            : QString();
+        showEntry(current);
+        return;
+    }
+
+    m_navLinks.clear();
+    m_subpageLinks.clear();
+    m_commandLinks.clear();
+    m_appletLinks.clear();
+    m_crumbNavLinks.clear();
+    setCrumbTrail({tr("Search Results")});
+    m_scroll->setWidget(buildSearchResultsPage(query));
 }
 
 MainWindow::Sidebar MainWindow::buildSidebarShell(int initialWidth)
@@ -831,23 +1153,38 @@ QScrollArea *MainWindow::buildNavSidebar(const QString &currentCategory)
 
 // Wire a sidebar label to the destination its link declares. Home and page
 // targets share m_subpageLinks (an empty path means "Control Panel Home"),
-// commands and applets go to their own maps, and a None target is left inert.
+// commands and applets go to their own maps. Unknown legacy links are visibly
+// disabled so the UI never advertises a clickable control that does nothing.
 void MainWindow::registerLinkTarget(QLabel *label, const LinkTarget &target)
 {
-    switch (target.kind) {
+    // Old pages used Nav::plain for unfinished links. Resolve those labels
+    // through the central catalog so they cannot remain false affordances.
+    const LinkTarget resolved = target.kind == LinkTarget::None
+        ? SettingsCatalog::targetForLegacyLabel(label->text()) : target;
+    switch (resolved.kind) {
+    case LinkTarget::Disabled:
+        label->setCursor(Qt::ArrowCursor);
+        label->setStyleSheet(
+            "QLabel { color: #888888; background: transparent; }");
+        label->setToolTip("This setting is not available yet.");
+        break;
     case LinkTarget::Home:
         m_subpageLinks.insert(label, QString());
         break;
     case LinkTarget::Page:
-        m_subpageLinks.insert(label, PageRegistry::pathFor(target.page));
+        m_subpageLinks.insert(label, PageRegistry::pathFor(resolved.page));
         break;
     case LinkTarget::Command:
-        m_commandLinks.insert(label, target.command);
+        m_commandLinks.insert(label, resolved.command);
         break;
     case LinkTarget::Applet:
-        m_appletLinks.insert(label, target.applet);
+        m_appletLinks.insert(label, resolved.applet);
         break;
     case LinkTarget::None:
+        label->setCursor(Qt::ArrowCursor);
+        label->setStyleSheet(
+            "QLabel { color: #888888; background: transparent; }");
+        label->setToolTip("This setting has not been connected yet.");
         break;
     }
 }
@@ -875,7 +1212,10 @@ QScrollArea *MainWindow::buildSubpageSidebar(const QList<SidebarLink> &links,
             m_checkUpdatesLabel = l;
         // The link already carries its own destination, so there is no title
         // string to reverse-map: just wire the label to the target it declares.
-        registerLinkTarget(l, sl.target);
+        registerLinkTarget(
+            l, sl.target.kind == LinkTarget::None
+                   ? SettingsCatalog::targetForLegacyLabel(sl.text)
+                   : sl.target);
         bar.navV->addWidget(l);
     };
 
@@ -1021,7 +1361,7 @@ QWidget *MainWindow::buildCategoryPage(const QString &currentCategory)
             { "Install or uninstall display languages",      kcm("kcm_regionandlang") },
             { "Change the date, time, or number format",     kcm("kcm_regionandlang") },
             { "Change location",                             kcm("kcm_regionandlang") },
-            { "Manage Linux Credentials",                    kcm("kcm_kwallet5") },
+            { "Manage Linux Credentials",                    kcm("kcm_kwallet") },
             { "Change how your mouse works",                 kcm("kcm_mouse") },
             { "Change how your keyboard works",              kcm("kcm_access") },
             { "Start speech recognition",                    kcm("kcm_access") },
@@ -1041,6 +1381,10 @@ QWidget *MainWindow::buildCategoryPage(const QString &currentCategory)
                         m_commandLinks.insert(l, cmdIt.value());
                 }
             }
+        }
+        if (!m_subpageLinks.contains(l) && !m_commandLinks.contains(l)
+            && !m_appletLinks.contains(l)) {
+            registerLinkTarget(l, SettingsCatalog::targetForLegacyLabel(text));
         }
         return l;
     };
@@ -1094,6 +1438,9 @@ QWidget *MainWindow::buildCategoryPage(const QString &currentCategory)
             m_appletLinks.insert(title, QStringLiteral("datetime"));
         else if (group.title == "Sound")
             m_appletLinks.insert(title, QStringLiteral("sound"));
+        else
+            registerLinkTarget(
+                title, SettingsCatalog::targetForLegacyLabel(group.title));
 
         textBlock->addWidget(title);
 
@@ -1144,4 +1491,3 @@ QWidget *MainWindow::buildCategoryPage(const QString &currentCategory)
 
     return page;
 }
-

@@ -8,8 +8,7 @@
 class QScrollArea;
 class QVBoxLayout;
 
-// The "Linux Firewall" detail page, a Linux-flavoured take on the Windows 7
-// "Help protect your computer with Windows Firewall" screen.
+// The "Linux Firewall" detail page.
 //
 // KDE's System Settings "Firewall" module (plasma-firewall) drives ufw on this
 // machine, so this page mirrors exactly what that module shows by reading the
@@ -17,8 +16,8 @@ class QVBoxLayout;
 //   * /etc/ufw/ufw.conf      -> ENABLED (firewall on/off), LOGLEVEL (notifications)
 //   * /etc/default/ufw       -> DEFAULT_INPUT_POLICY / DEFAULT_OUTPUT_POLICY
 //   * /etc/ufw/user.rules     -> the count of configured allow/deny rules
-// It only reads this state; it never changes it. Toggling the firewall in KDE
-// settings rewrites those files, so reopening this page reflects the change.
+// Read-only state comes from those files. Explicit, confirmed changes run ufw
+// through polkit, and the page refreshes only after a successful command.
 class FirewallPage : public QWidget {
     Q_OBJECT
 
@@ -28,6 +27,9 @@ public:
     // Left-nav entries shown by MainWindow's subpage sidebar.
     static QList<SidebarLink> sidebarLinks();
     static QList<SidebarLink> sidebarSeeAlso();
+
+signals:
+    void refreshRequested();
 
 private:
     // Live firewall facts, read once in the constructor from the ufw config
@@ -51,4 +53,5 @@ private:
                                 const QString &connState,
                                 bool expanded,
                                 const FwInfo &info);
+    void runUfw(const QStringList &arguments, const QString &successMessage);
 };

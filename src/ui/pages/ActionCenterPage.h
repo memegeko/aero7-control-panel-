@@ -28,6 +28,9 @@ public:
     static QList<SidebarLink> sidebarLinks();
     static QList<SidebarLink> sidebarSeeAlso();
 
+signals:
+    void navigateRequested(PageId page);
+
 private:
     // Live facts backing the Security rows, gathered once in the constructor.
     struct AcInfo {

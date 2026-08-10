@@ -22,6 +22,9 @@ public:
     static QList<SidebarLink> sidebarLinks();
     static QList<SidebarLink> sidebarSeeAlso();
 
+signals:
+    void settingsRequested();
+
 private:
     // Live network facts, collected once in the constructor.
     struct NetInfo {

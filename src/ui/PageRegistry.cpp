@@ -14,6 +14,8 @@ struct Entry {
 const QList<Entry> &table()
 {
     static const QList<Entry> kEntries = {
+        { PageId::GettingStarted,
+          QStringLiteral("All Control Panel Items/Getting Started") },
         { PageId::LinuxUpdate,      QStringLiteral("System and Security/Linux Update") },
         { PageId::SelectUpdates,
           QStringLiteral("System and Security/Linux Update/Select updates to install") },
@@ -35,6 +37,34 @@ const QList<Entry> &table()
         { PageId::EaseOfAccess,     QStringLiteral("Ease of Access/Ease of Access Center") },
         { PageId::DevicesPrinters,  QStringLiteral("Hardware and Sound/Devices and Printers") },
         { PageId::System,           QStringLiteral("System and Security/System") },
+        { PageId::DisplaySettings,
+          QStringLiteral("Appearance and Personalization/Display") },
+        { PageId::NetworkSettings,
+          QStringLiteral("Network and Internet/Network Settings") },
+        { PageId::RegionLanguage,
+          QStringLiteral("Clock, Language, and Region/Region and Language") },
+        { PageId::TaskbarStartMenu,
+          QStringLiteral("Appearance and Personalization/Taskbar and Start Menu") },
+        { PageId::DefaultPrograms,
+          QStringLiteral("Programs/Default Programs") },
+        { PageId::InputDevices,
+          QStringLiteral("Hardware and Sound/Input Devices") },
+        { PageId::StartupShutdown,
+          QStringLiteral("System and Security/Startup and Shutdown") },
+        { PageId::WindowBehavior,
+          QStringLiteral("Appearance and Personalization/Window Behavior") },
+        { PageId::SecurityMaintenance,
+          QStringLiteral("System and Security/Security and Maintenance") },
+        { PageId::StorageAdministration,
+          QStringLiteral("System and Security/Storage and Devices") },
+        { PageId::InternetOptions,
+          QStringLiteral("Network and Internet/Internet Options") },
+        { PageId::FolderOptions,
+          QStringLiteral("Appearance and Personalization/Folder Options") },
+        { PageId::AutoPlay,
+          QStringLiteral("Hardware and Sound/AutoPlay") },
+        { PageId::BackupRestore,
+          QStringLiteral("System and Security/Backup and Restore") },
     };
     return kEntries;
 }

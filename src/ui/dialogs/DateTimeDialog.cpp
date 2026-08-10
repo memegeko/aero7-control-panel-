@@ -190,14 +190,12 @@ QIcon uacShieldIcon()
 // A blue underline-on-hover help link, matching the app's other pages.
 QLabel *makeHelpLink(const QString &text)
 {
-    auto *l = new QLabel(text);
+    auto *l = new QLabel(text + QStringLiteral("  (help article coming later)"));
     QFont f = l->font();
     f.setPointSize(9);
     l->setFont(f);
-    l->setStyleSheet(
-        "QLabel { color: #1F4E99; background: transparent; }"
-        "QLabel:hover { color: #0033AA; }");
-    l->setCursor(Qt::PointingHandCursor);
+    l->setStyleSheet("QLabel { color: #777777; background: transparent; }");
+    l->setToolTip(QStringLiteral("This help article is not available yet."));
     return l;
 }
 
@@ -709,7 +707,7 @@ void DateTimeDialog::openInternetSettings()
     serverRow->addWidget(serverLabel);
     auto *serverCombo = new QComboBox;
     serverCombo->setEditable(true);
-    const QStringList servers = { "time.cloudflare.com", "time.windows.com",
+    const QStringList servers = { "time.cloudflare.com", "time.nist.gov",
                                   "pool.ntp.org", "time.google.com",
                                   "0.arch.pool.ntp.org" };
     serverCombo->addItems(servers);

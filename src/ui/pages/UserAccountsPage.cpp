@@ -14,6 +14,15 @@
 #include <QPixmap>
 #include <QPainter>
 #include <QPainterPath>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QDir>
+#include <QImage>
+#include <QLineEdit>
+#include <functional>
 
 #include <pwd.h>
 #include <grp.h>
@@ -82,15 +91,15 @@ QList<SidebarLink> UserAccountsPage::sidebarLinks()
 {
     return {
         Nav::command("Manage another account", kcm("kcm_users")),
-        Nav::command("Change User Account Control settings", kcm("kcm_users")),
+        Nav::to("Review administrator approval", PageId::SecurityMaintenance),
     };
 }
 
 QList<SidebarLink> UserAccountsPage::sidebarSeeAlso()
 {
     return {
-        Nav::plain("Parental Controls"),
-        Nav::command("Credential Manager", kcm("kcm_kwallet5")),
+        Nav::disabled("Parental Controls"),
+        Nav::to("Credential Manager", PageId::SecurityMaintenance),
     };
 }
 
@@ -151,20 +160,30 @@ UserAccountsPage::UserAccountsPage(QScrollArea *sidebar, QWidget *parent)
 
     // All of these edits are handled by KDE's user manager, which prompts for
     // authorization itself.
-    auto addTask = [&](const QString &text) {
+    auto addTask = [&](const QString &text, std::function<void()> action) {
         auto *link = new LinkLabel(text);
-        QObject::connect(link, &LinkLabel::clicked, this, [this]() {
-            launchDetached(this, { "kcmshell6", "kcm_users" });
-        });
+        QObject::connect(link, &LinkLabel::clicked, this, std::move(action));
         tasks->addWidget(link, 0, Qt::AlignLeft);
     };
 
-    addTask("Change your password");
-    addTask("Change your picture");
-    addTask("Change your account name");
-    addTask("Change your account type");
-    addTask("Manage another account");
-    addTask("Change User Account Control settings");
+    addTask("Change your password", [this]() {
+        const QString terminal = QStandardPaths::findExecutable("qterminal");
+        if (!terminal.isEmpty())
+            QProcess::startDetached(terminal, {"-e", "passwd"});
+        else
+            launchDetached(this, {"kcmshell6", "kcm_users"});
+    });
+    addTask("Change your picture", [this]() { changePicture(); });
+    addTask("Change your account name", [this, acct]() { changeDisplayName(acct); });
+    addTask("Change your account type", [this]() {
+        launchDetached(this, {"kcmshell6", "kcm_users"});
+    });
+    addTask("Manage another account", [this]() {
+        launchDetached(this, {"kcmshell6", "kcm_users"});
+    });
+    addTask("Review administrator approval", [this]() {
+        emit navigateRequested(PageId::SecurityMaintenance);
+    });
 
     tasks->addStretch(1);
     body->addLayout(tasks, 0);
@@ -194,4 +213,67 @@ UserAccountsPage::UserAccountsPage(QScrollArea *sidebar, QWidget *parent)
 
     contentV->addLayout(body);
     contentV->addStretch(1);
+}
+
+void UserAccountsPage::changePicture()
+{
+    const QString source = QFileDialog::getOpenFileName(
+        this, "Choose an account picture", QDir::homePath(),
+        "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*)");
+    if (source.isEmpty())
+        return;
+    QImage image(source);
+    if (image.isNull()) {
+        QMessageBox::warning(this, "User Accounts", "The selected image could not be opened.");
+        return;
+    }
+    const QString destination = QDir::homePath() + "/.face.icon";
+    if (!image.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+             .save(destination, "PNG")) {
+        QMessageBox::warning(this, "User Accounts", "The account picture could not be saved.");
+        return;
+    }
+    QFile::remove(QDir::homePath() + "/.face");
+    QFile::link(destination, QDir::homePath() + "/.face");
+    emit refreshRequested();
+}
+
+void UserAccountsPage::changeDisplayName(const Account &account)
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, "Change account name", "New display name:", QLineEdit::Normal,
+        account.fullName, &ok).trimmed();
+    if (!ok || name.isEmpty() || name == account.fullName)
+        return;
+    if (QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()
+        || QStandardPaths::findExecutable(QStringLiteral("usermod")).isEmpty()) {
+        QMessageBox::warning(
+            this, "User Accounts",
+            "Changing the display name requires pkexec and usermod.");
+        return;
+    }
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            QMessageBox::warning(this, "User Accounts",
+                                 "The account command could not be started.");
+            process->deleteLater();
+        }
+    });
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, process](int code, QProcess::ExitStatus) {
+        if (code == 0)
+            emit refreshRequested();
+        else if (code != 126 && code != 127) {
+            const QString error =
+                QString::fromUtf8(process->readAllStandardError()).trimmed();
+            QMessageBox::warning(
+                this, "User Accounts",
+                error.isEmpty() ? "The account name was not changed." : error);
+        }
+        process->deleteLater();
+    });
+    process->start("pkexec", {"usermod", "-c", name, account.userName});
 }

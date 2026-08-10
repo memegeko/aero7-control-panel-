@@ -21,6 +21,7 @@
 enum class PageId {
     None,             // no page (a decorative/no-op link)
     Home,             // the Control Panel home view
+    GettingStarted,
     LinuxUpdate,
     SelectUpdates,    // the Linux Update "select updates to install" sub-view
     ProgramsFeatures,
@@ -36,13 +37,29 @@ enum class PageId {
     EaseOfAccess,
     DevicesPrinters,
     System,
+    // Aero7-owned settings hubs.  These replace the System Settings landing
+    // page and keep each original KDE module name documented in one catalog.
+    DisplaySettings,
+    NetworkSettings,
+    RegionLanguage,
+    TaskbarStartMenu,
+    DefaultPrograms,
+    InputDevices,
+    StartupShutdown,
+    WindowBehavior,
+    SecurityMaintenance,
+    StorageAdministration,
+    InternetOptions,
+    FolderOptions,
+    AutoPlay,
+    BackupRestore,
 };
 
 // Where a sidebar link goes when it is clicked. A link can navigate to another
 // page (by id), return home, launch an external command, or open an in-app
 // applet dialog. `None` is a decorative link that renders but does nothing.
 struct LinkTarget {
-    enum Kind { None, Home, Page, Command, Applet };
+    enum Kind { None, Disabled, Home, Page, Command, Applet };
 
     Kind        kind = None;
     PageId      page = PageId::None;   // used when kind == Page
@@ -103,6 +120,15 @@ inline SidebarLink applet(const QString &text, QString id)
 inline SidebarLink plain(const QString &text)
 {
     return { text, LinkTarget{} };
+}
+
+// A deliberately unavailable item. Unlike the old decorative links this is
+// rendered grey with an explanation, so it cannot be mistaken for a bug.
+inline SidebarLink disabled(const QString &text)
+{
+    LinkTarget t;
+    t.kind = LinkTarget::Disabled;
+    return { text, t };
 }
 
 } // namespace Nav

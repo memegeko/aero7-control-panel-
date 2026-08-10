@@ -195,8 +195,9 @@ PersonalizationPage::PersonalizationPage(QScrollArea *sidebar, QWidget *parent)
     contentV->addSpacing(6);
 
     auto *intro = Win7::label(
-        "Click a theme to change the desktop background, window color, sounds, "
-        "and screen saver all at once.", 9, "#1A1A1A");
+        "Click a color scheme to change application and window colors. Use the "
+        "shortcuts below for the desktop background, sounds and lock screen.",
+        9, "#1A1A1A");
     intro->setWordWrap(true);
     contentV->addWidget(intro);
     contentV->addSpacing(14);
@@ -208,7 +209,7 @@ PersonalizationPage::PersonalizationPage(QScrollArea *sidebar, QWidget *parent)
         contentV->addSpacing(10);
     };
 
-    addHeading(QStringLiteral("Aero Themes (%1)").arg(m_schemes.size()));
+    addHeading(QStringLiteral("Aero Color Schemes (%1)").arg(m_schemes.size()));
 
     // Swatch grid: four themes per row.
     auto *grid = new QGridLayout;

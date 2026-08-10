@@ -1,5 +1,6 @@
 #include "PowerOptionsPage.h"
 #include "Win7Ui.h"
+#include "LinkLabel.h"
 
 #include <QScrollArea>
 #include <QLabel>
@@ -154,6 +155,9 @@ PowerOptionsPage::PowerOptionsPage(QScrollArea *sidebar, QWidget *parent)
     intro->setWordWrap(true);
     intro->setOpenExternalLinks(false);
     intro->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    connect(intro, &QLabel::linkActivated, this, [this]() {
+        launchDetached(this, {"kcmshell6", "kcm_powerdevilprofilesconfig"});
+    });
     {
         QPalette pal = intro->palette();
         pal.setColor(QPalette::Link, QColor("#1F4E99"));
@@ -364,16 +368,10 @@ QWidget *PowerOptionsPage::buildPlanRow(const Plan &plan)
     nameLine->addWidget(name, 0, Qt::AlignVCenter);
     nameLine->addStretch(1);
 
-    auto *change = new QLabel("Change plan settings");
-    {
-        QFont f = change->font();
-        f.setPointSize(9);
-        change->setFont(f);
-    }
-    change->setCursor(Qt::PointingHandCursor);
-    change->setStyleSheet(
-        "QLabel { color: #1F4E99; background: transparent; }"
-        "QLabel:hover { color: #0033AA; }");
+    auto *change = new LinkLabel("Change plan settings");
+    connect(change, &LinkLabel::clicked, this, [this]() {
+        launchDetached(this, {"kcmshell6", "kcm_powerdevilprofilesconfig"});
+    });
     nameLine->addWidget(change, 0, Qt::AlignVCenter);
 
     textV->addLayout(nameLine);
