@@ -16,7 +16,7 @@ together in a familiar Control Panel-style interface for the Aero7 desktop.
 [![GPL-3.0 License](https://img.shields.io/badge/license-GPL--3.0-2ea44f.svg)](LICENSE)
 
 [Features](#features) ·
-[Building](#building) ·
+[Installation](#installation) ·
 [Roadmap](#roadmap) ·
 [Upstream](#upstream) ·
 [Report a bug](https://github.com/memegeko/aero7-control-panel-/issues/new)
@@ -46,12 +46,12 @@ desktop.
 
 ## Features
 
-Current upstream functionality includes:
+Current functionality includes:
 
 - Windows 7-style Control Panel home screen organized by category
 - Windows Update-style page backed by real `pacman` update checks
 - Installed update history read from `pacman.log`
-- Programs and Features package listing, uninstall, and AUR-aware reinstall
+- Programs and Features package listing and removal
 - Network and Sharing Center overview
 - Firewall status and rule summary through `ufw`
 - Power Options
@@ -59,28 +59,20 @@ Current upstream functionality includes:
 
 Aero7-specific pages and integrations will be added as development continues.
 
-## Building
+## Installation
 
-### Arch Linux
+Aero7 Control Panel is distributed through the official
+[Aero7 Package Repository](https://github.com/memegeko/aero7-repo) and is
+included with Aero7.
 
-Install the build dependencies:
-
-```bash
-sudo pacman -S --needed qt6-base qt6-multimedia cmake   kwidgetsaddons kwindowsystem openssl zlib
-```
-
-Build and run:
+On a system with the Aero7 repository configured, install it with:
 
 ```bash
-cmake -B build
-cmake --build build -j"$(nproc)"
-./build/control
+sudo pacman -S linux-control-panel
 ```
 
-The application also requires
-[libAeroQt](https://gitgud.io/atmk/libaero-qt). Place the built
-`libAeroQt.so*` files beside `build/control`, or install them in a system
-library path.
+Updates are delivered through the Aero7 repository alongside the rest of the
+Aero7 desktop.
 
 ## Runtime dependencies
 
@@ -88,7 +80,6 @@ library path.
 | --- | --- |
 | `pkexec` | Privileged package-management actions |
 | `pacman` | Updates, installed packages, and package removal |
-| `yay` | Optional reinstall support for AUR and foreign packages |
 | `ufw` | Firewall status and rules |
 
 ## Roadmap
@@ -108,8 +99,8 @@ Track planned work and report problems in the
 
 ## Related Aero7 projects
 
-- [Aero7-shell](https://github.com/memegeko/aero7-shell) — installs and manages the Aero7 desktop
-- [Aero7 Package Repository](https://github.com/memegeko/aero7-repo) — signed Arch Linux packages for Aero7
+- [Aero7 Shell](https://github.com/memegeko/aero7-shell) — the Aero7 desktop shell and installer
+- [Aero7 Package Repository](https://github.com/memegeko/aero7-repo) — official packages and updates for Aero7
 
 ## Upstream
 
@@ -136,10 +127,10 @@ their own licenses.
 Aero7 Control Panel is an independent open-source project and is not affiliated
 with, authorized, sponsored, endorsed, or approved by Microsoft Corporation.
 
-Microsoft, Windows, and the Windows logo are trademarks of the Microsoft group
-of companies. All other trademarks are the property of their respective owners.
+Microsoft and Windows are trademarks of the Microsoft group of companies. All
+other trademarks are the property of their respective owners.
 
 This project recreates interface concepts and does not include or redistribute
-proprietary Microsoft logos, icons, sounds, fonts, or other copyrighted assets.
+proprietary Microsoft assets.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
