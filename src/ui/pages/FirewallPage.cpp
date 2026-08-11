@@ -16,14 +16,105 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QPushButton>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QSysInfo>
 
 using Win7::ClickableWidget;
+
+namespace {
+
+struct FirewallBackendStatus {
+    bool ready = false;
+    bool restartRequired = false;
+    QString message;
+};
+
+// UFW uses the system iptables frontend.  After a kernel package update the
+// running kernel can temporarily have no matching modules on disk; nft then
+// reports "Protocol not supported" and UFW turns that into the rather opaque
+// "Couldn't determine iptables version" error.  Detect that state before an
+// authenticated action so the Control Panel can give the user the real fix.
+FirewallBackendStatus probeFirewallBackend()
+{
+    FirewallBackendStatus status;
+    const QString iptables = QStandardPaths::findExecutable(
+        QStringLiteral("iptables"));
+    if (iptables.isEmpty()) {
+        status.message = QStringLiteral(
+            "The firewall backend is not installed. Run System Update to "
+            "install the required firewall components, then try again.");
+        return status;
+    }
+
+    QProcess probe;
+    probe.start(iptables, {QStringLiteral("-V")});
+    if (!probe.waitForStarted(1500) || !probe.waitForFinished(3000)
+        || probe.exitStatus() != QProcess::NormalExit
+        || probe.exitCode() != 0) {
+        const QString runningKernel = QSysInfo::kernelVersion();
+        const QDir modulesRoot(QStringLiteral("/usr/lib/modules"));
+        const QStringList installedKernels = modulesRoot.entryList(
+            QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        const bool runningModulesPresent =
+            modulesRoot.exists(runningKernel);
+
+        if (!runningKernel.isEmpty() && !runningModulesPresent
+            && !installedKernels.isEmpty()) {
+            status.restartRequired = true;
+            status.message = QStringLiteral(
+                "A system update installed a new Linux kernel, but Aero7 is "
+                "still running the previous kernel (%1). Restart Aero7 to "
+                "finish the update, then open Linux Firewall again.")
+                                 .arg(runningKernel);
+            return status;
+        }
+
+        QString detail = QString::fromUtf8(probe.readAllStandardError()).trimmed();
+        if (detail.isEmpty())
+            detail = QString::fromUtf8(probe.readAllStandardOutput()).trimmed();
+        status.message = QStringLiteral(
+            "The firewall backend could not start. Run System Update, restart "
+            "Aero7, and try again.");
+        if (!detail.isEmpty())
+            status.message += QStringLiteral("\n\nTechnical detail: %1").arg(detail);
+        return status;
+    }
+
+    status.ready = true;
+    return status;
+}
+
+QWidget *backendWarning(const FirewallBackendStatus &status)
+{
+    auto *panel = new QFrame;
+    panel->setObjectName(QStringLiteral("firewallBackendWarning"));
+    panel->setStyleSheet(
+        "#firewallBackendWarning { background: #FFF4CE; border: 1px solid "
+        "#D6B656; }"
+        "#firewallBackendWarning QLabel { background: transparent; color: "
+        "#4A3B00; }");
+    auto *layout = new QHBoxLayout(panel);
+    layout->setContentsMargins(10, 8, 10, 8);
+    layout->setSpacing(8);
+
+    auto *icon = new QLabel;
+    icon->setPixmap(themeIcon({"system-reboot", "dialog-warning"}).pixmap(24, 24));
+    icon->setFixedSize(24, 24);
+    layout->addWidget(icon, 0, Qt::AlignTop);
+
+    auto *text = Win7::bodyLabel(status.message);
+    text->setWordWrap(true);
+    layout->addWidget(text, 1);
+    return panel;
+}
+
+} // namespace
 
 // True when the machine has a default route (i.e. is on a network). Mirrors the
 // Network and Sharing Center's reading of /proc/net/route: the default route is
@@ -207,7 +298,8 @@ QWidget *FirewallPage::buildLocationPanel(const QString &title,
 
     auto *caption = Win7::bodyLabel(
         "Linux Firewall (ufw) applies one set of rules to every network. Unlike "
-        "Windows, Linux has no separate Home, Work, or Public network profiles.");
+        "firewalls with location profiles, it has no separate Home, Work, or "
+        "Public rule sets.");
     caption->setContentsMargins(kLeftInset, 0, kRightInset, 0);
     bodyV->addWidget(caption);
     bodyV->addSpacing(12);
@@ -287,6 +379,7 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
     : QWidget(parent)
 {
     const FwInfo info = gatherInfo();
+    const FirewallBackendStatus backend = probeFirewallBackend();
 
     // Windows 7 lays the content out at a fixed width and leaves the rest of
     // the window blank on the right rather than stretching to fill it.
@@ -314,12 +407,20 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
 
     contentV->addSpacing(12);
 
+    if (!backend.ready) {
+        contentV->addWidget(backendWarning(backend));
+        contentV->addSpacing(12);
+    }
+
     auto *controls = new QHBoxLayout;
     controls->setSpacing(8);
     auto *toggle = new QPushButton(info.enabled ? "Turn firewall off"
                                                 : "Turn firewall on");
     toggle->setObjectName("firewall-toggle");
     toggle->setIcon(themeIcon({"preferences-security-firewall", "security-high"}));
+    toggle->setEnabled(backend.ready);
+    if (!backend.ready)
+        toggle->setToolTip(backend.message);
     connect(toggle, &QPushButton::clicked, this, [this, info]() {
         const QStringList args = info.enabled
             ? QStringList{"disable"} : QStringList{"--force", "enable"};
@@ -330,6 +431,9 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
 
     auto *allow = new QPushButton("Allow a port or service…");
     allow->setObjectName("firewall-allow-service");
+    allow->setEnabled(backend.ready);
+    if (!backend.ready)
+        allow->setToolTip(backend.message);
     connect(allow, &QPushButton::clicked, this, [this]() {
         bool ok = false;
         const QString rule = QInputDialog::getText(
@@ -344,12 +448,18 @@ FirewallPage::FirewallPage(QScrollArea *sidebar, QWidget *parent)
 
     auto *notifications = new QPushButton("Notification settings…");
     notifications->setObjectName("firewall-notification-settings");
+    notifications->setEnabled(backend.ready);
+    if (!backend.ready)
+        notifications->setToolTip(backend.message);
     connect(notifications, &QPushButton::clicked, this,
             [this, info]() { showNotificationSettings(info.logLevel); });
     controls->addWidget(notifications);
 
     auto *reset = new QPushButton("Restore defaults…");
     reset->setObjectName("firewall-restore-defaults");
+    reset->setEnabled(backend.ready);
+    if (!backend.ready)
+        reset->setToolTip(backend.message);
     connect(reset, &QPushButton::clicked, this, [this]() {
         if (QMessageBox::warning(
                 this, "Restore firewall defaults",
@@ -440,6 +550,14 @@ void FirewallPage::runUfw(const QStringList &arguments,
         QMessageBox::warning(
             this, "Firewall",
             "The firewall action requires both pkexec and ufw to be installed.");
+        return;
+    }
+    const FirewallBackendStatus backend = probeFirewallBackend();
+    if (!backend.ready) {
+        QMessageBox::warning(this,
+                             backend.restartRequired ? "Restart required"
+                                                     : "Firewall unavailable",
+                             backend.message);
         return;
     }
     auto *process = new QProcess(this);
