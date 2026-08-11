@@ -1,0 +1,1 @@
+Aero7 Control Panel documentation · [Source](https://github.com/memegeko/aero7-control-panel-) · [Issues](https://github.com/memegeko/aero7-control-panel-/issues) · [Aero7 website](https://aero7.miku-dayo.com/)

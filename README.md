@@ -16,6 +16,7 @@ together in a familiar Control Panel-style interface for the Aero7 desktop.
 [![GPL-3.0 License](https://img.shields.io/badge/license-GPL--3.0-2ea44f.svg)](LICENSE)
 
 [Features](#features) ·
+[Documentation](https://github.com/memegeko/aero7-control-panel-/wiki) ·
 [Installation](#installation) ·
 [Roadmap](#roadmap) ·
 [Upstream](#upstream) ·
@@ -78,13 +79,21 @@ actions open the
 
 ### KDE settings map
 
-The wiki-ready [settings map](docs/KDE-SETTINGS-MAP.md) records each Aero7
+The [complete settings reference](docs/CONTROL-PANEL-SETTINGS-REFERENCE.md)
+explains what every searchable setting does, its original KDE name, the Linux
+or KDE backend it uses, and its implementation status. The lower-level
+[settings map](docs/KDE-SETTINGS-MAP.md) records each Aero7
 label, its original KDE name, its KCM or native backend, and its replacement
 state. Original KDE names remain traceable even when the public Aero7 wording
 is improved later. Missing optional KCMs produce a visible explanation instead
 of a dead button. The companion [function audit](docs/CONTROL-PANEL-FUNCTIONS.md)
 records what every main page action currently does and which controls are
 intentionally unavailable.
+
+The separate [Aero7 Control Panel Wiki](https://github.com/memegeko/aero7-control-panel-/wiki)
+contains the user handbook, settings reference, backend map, permissions, and
+troubleshooting guidance. Documentation for the Aero7 operating system and
+other Aero7 projects remains in their own repositories.
 
 ## Installation
 

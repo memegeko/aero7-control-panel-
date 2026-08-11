@@ -17,7 +17,7 @@ not pretend to be working controls.
 | Programs and Features | Uninstall/repair | Uses the existing package-management workflow and confirmations |
 | Installed Updates | Installed update list | Reads package history; it no longer claims a single historical update can be uninstalled safely |
 | Network and Sharing Center | Status, connect and diagnostics | Reads live NetworkManager data, activates saved connections with `nmcli`, and shows address, gateway and routing diagnostics; the advanced editor remains available separately |
-| Firewall | Turn on/off | Runs the corresponding `ufw` command through polkit |
+| Firewall | Turn on/off | Runs the corresponding `ufw` command through polkit; mutation controls are disabled with a restart-required explanation when an updated kernel has left the running firewall backend stale |
 | Firewall | Allow a port or service | Validates a user-provided `ufw allow` rule and applies it through polkit |
 | Firewall | Notification settings | Configures UFW event logging from Off through Full and explains that UFW does not provide per-program popups |
 | Firewall | Restore defaults | Confirms the destructive reset before running `ufw --force reset` |
@@ -71,6 +71,17 @@ exists:
 
 These controls are grey and explain their state in a tooltip. They should not
 be changed back into blue decorative links.
+
+## Restart-required firewall state
+
+The Firewall page probes the installed `iptables` frontend before offering a
+state-changing action. If a system update has installed a new Linux kernel but
+the computer is still running the previous kernel and its matching modules are
+no longer available, UFW cannot safely initialize its backend. Control Panel
+then shows **Restart required** and disables firewall mutation controls. Run
+Linux Update if anything remains pending, restart Aero7, and open Firewall
+again. This avoids exposing UFW's otherwise cryptic “Couldn't determine
+iptables version” failure dialog.
 
 ## Adding or renaming a setting
 
