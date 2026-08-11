@@ -5,6 +5,7 @@
 - [Settings Reference](Settings-Reference)
 - [Backends and Permissions](Backends-and-Permissions)
 - [Installation and Updates](Installation-and-Updates)
+- [Screenshots](Screenshots)
 
 ## Project
 

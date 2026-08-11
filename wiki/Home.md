@@ -15,6 +15,8 @@ repository, and website remains in each project's own repository.
   commands, KDE modules, and privilege boundaries behind Control Panel.
 - [Installation and Updates](Installation-and-Updates) — install or update the
   Control Panel through the Aero7 package repository.
+- [Screenshots](Screenshots) — current captures of the main Control Panel and
+  representative native settings pages.
 
 ## Finding a setting
 

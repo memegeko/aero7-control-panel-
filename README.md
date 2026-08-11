@@ -33,6 +33,12 @@ together in a familiar Control Panel-style interface for the Aero7 desktop.
 > individual KDE Control Module as a documented compatibility backend while a
 > native Aero7 implementation is developed.
 
+[![Aero7 Control Panel home](docs/screenshots/control-panel-home.png)](https://github.com/memegeko/aero7-control-panel-/wiki/Screenshots)
+
+See the [Control Panel screenshot gallery](https://github.com/memegeko/aero7-control-panel-/wiki/Screenshots)
+for Getting Started, networking, personalization, programs, user accounts, and
+firewall diagnostics.
+
 ## About the project
 
 Aero7 Control Panel is the central settings application for the
