@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QCoreApplication>
 #include <QEvent>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -96,7 +97,39 @@ private:
     bool m_pending = false;
 };
 
+static void printSettingsCatalog()
+{
+    QJsonArray catalog;
+    for (const SettingDefinition &setting : SettingsCatalog::all()) {
+        catalog.append(QJsonObject{
+            {QStringLiteral("key"), setting.key},
+            {QStringLiteral("name"), setting.aeroName},
+            {QStringLiteral("description"), setting.description},
+            {QStringLiteral("icon"), setting.iconName},
+            {QStringLiteral("section"),
+             SettingsCatalog::sectionTitle(setting.section)},
+            {QStringLiteral("keywords"),
+             QStringList{setting.kdeName, setting.kdeModule, setting.key}
+                 .join(QLatin1Char(' '))},
+        });
+    }
+    QTextStream(stdout) << QJsonDocument(catalog).toJson(QJsonDocument::Compact)
+                        << Qt::endl;
+}
+
 int main(int argc, char *argv[]) {
+    // The Plasma launcher reads this catalog while the desktop is starting and
+    // may not have access to a display server yet. Handle this one read-only
+    // command before QApplication tries to initialize a GUI platform plugin.
+    for (int index = 1; index < argc; ++index) {
+        if (QString::fromLocal8Bit(argv[index]) ==
+            QLatin1String("--list-settings-json")) {
+            QCoreApplication app(argc, argv);
+            printSettingsCatalog();
+            return 0;
+        }
+    }
+
     QApplication app(argc, argv);
     app.setOrganizationName("controlpanel");
     app.setApplicationName("controlpanel");
@@ -124,22 +157,7 @@ int main(int argc, char *argv[]) {
     parser.process(app);
 
     if (parser.isSet(listSettingsOption)) {
-        QJsonArray catalog;
-        for (const SettingDefinition &setting : SettingsCatalog::all()) {
-            catalog.append(QJsonObject{
-                {QStringLiteral("key"), setting.key},
-                {QStringLiteral("name"), setting.aeroName},
-                {QStringLiteral("description"), setting.description},
-                {QStringLiteral("icon"), setting.iconName},
-                {QStringLiteral("section"),
-                 SettingsCatalog::sectionTitle(setting.section)},
-                {QStringLiteral("keywords"),
-                 QStringList{setting.kdeName, setting.kdeModule, setting.key}
-                     .join(QLatin1Char(' '))},
-            });
-        }
-        QTextStream(stdout) << QJsonDocument(catalog).toJson(QJsonDocument::Compact)
-                            << Qt::endl;
+        printSettingsCatalog();
         return 0;
     }
 
