@@ -432,6 +432,37 @@ void MainWindow::navigateHome()
     showEntry(QString());
 }
 
+bool MainWindow::openSetting(const QString &key)
+{
+    const SettingDefinition *setting = SettingsCatalog::findByKey(key);
+    if (!setting)
+        return false;
+
+    const LinkTarget target = SettingsCatalog::targetForSetting(*setting);
+    switch (target.kind) {
+    case LinkTarget::Home:
+        navigateHome();
+        return true;
+    case LinkTarget::Page:
+        openPage(target.page);
+        return true;
+    case LinkTarget::Applet:
+        openApplet(target.applet);
+        return true;
+    case LinkTarget::Command:
+        if (!target.command.isEmpty()) {
+            const QString program = target.command.first();
+            const QStringList arguments = target.command.mid(1);
+            return QProcess::startDetached(program, arguments);
+        }
+        return false;
+    case LinkTarget::Disabled:
+    case LinkTarget::None:
+        return false;
+    }
+    return false;
+}
+
 void MainWindow::navigateTo(const QString &path)
 {
     if (path.contains('/')) {

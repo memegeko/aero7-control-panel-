@@ -28,6 +28,10 @@ public:
     // `control --page getting-started`.
     void openPage(PageId pageId);
 
+    // Opens a catalog setting from an external surface such as the Aero7
+    // Start-menu Settings search. Returns false for an unknown key.
+    bool openSetting(const QString &key);
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 

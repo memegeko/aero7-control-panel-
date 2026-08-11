@@ -25,6 +25,10 @@ int main()
         if (keys.contains(setting.key))
             return 3;
         keys.insert(setting.key);
+        if (SettingsCatalog::findByKey(setting.key) != &setting)
+            return 13;
+        if (SettingsCatalog::findByKey(setting.key.toUpper()) != &setting)
+            return 14;
 
         const LinkTarget target = SettingsCatalog::targetForSetting(setting);
         if (target.kind == LinkTarget::None || target.kind == LinkTarget::Disabled)
@@ -64,6 +68,8 @@ int main()
         return 10;
     if (nativeReplacementsFound != nativeReplacementKeys)
         return 12;
+    if (SettingsCatalog::findByKey(QStringLiteral("not-a-real-setting")))
+        return 15;
 
     const QList<PageId> hubs = {
         PageId::DisplaySettings, PageId::NetworkSettings,

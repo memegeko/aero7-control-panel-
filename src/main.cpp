@@ -2,11 +2,17 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QEvent>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QStringList>
+#include <QTextStream>
 #include <QTimer>
 #include "MainWindow.h"
 #include "IconHelper.h"
+#include "SettingsCatalog.h"
 #include <Aero7Qt/stylesheet.h>
 
 // Aero7Qt's application stylesheet skins QScrollBar with the Aero look. We want
@@ -97,9 +103,6 @@ int main(int argc, char *argv[]) {
     // No setApplicationDisplayName: Qt appends it to every window/dialog title.
     app.setWindowIcon(themeIcon({"preferences-system"}));
 
-    Aero7::applyApplicationStyle(&app);
-    new ScrollBarUnstyler(&app);   // native scroll bars; owned by the app
-
     QCommandLineParser parser;
     parser.setApplicationDescription(
         QStringLiteral("Aero7 Control Panel"));
@@ -109,7 +112,57 @@ int main(int argc, char *argv[]) {
         QStringLiteral("Open a Control Panel page directly."),
         QStringLiteral("page"));
     parser.addOption(pageOption);
+    QCommandLineOption settingOption(
+        QStringList{QStringLiteral("s"), QStringLiteral("setting")},
+        QStringLiteral("Open a setting by its stable Aero7 catalog key."),
+        QStringLiteral("key"));
+    parser.addOption(settingOption);
+    QCommandLineOption listSettingsOption(
+        QStringLiteral("list-settings-json"),
+        QStringLiteral("Print the searchable settings catalog as JSON and exit."));
+    parser.addOption(listSettingsOption);
     parser.process(app);
+
+    if (parser.isSet(listSettingsOption)) {
+        QJsonArray catalog;
+        for (const SettingDefinition &setting : SettingsCatalog::all()) {
+            catalog.append(QJsonObject{
+                {QStringLiteral("key"), setting.key},
+                {QStringLiteral("name"), setting.aeroName},
+                {QStringLiteral("description"), setting.description},
+                {QStringLiteral("icon"), setting.iconName},
+                {QStringLiteral("section"),
+                 SettingsCatalog::sectionTitle(setting.section)},
+                {QStringLiteral("keywords"),
+                 QStringList{setting.kdeName, setting.kdeModule, setting.key}
+                     .join(QLatin1Char(' '))},
+            });
+        }
+        QTextStream(stdout) << QJsonDocument(catalog).toJson(QJsonDocument::Compact)
+                            << Qt::endl;
+        return 0;
+    }
+
+    const QString requestedSetting = parser.value(settingOption);
+    const SettingDefinition *setting = requestedSetting.isEmpty()
+        ? nullptr : SettingsCatalog::findByKey(requestedSetting);
+    if (!requestedSetting.isEmpty() && !setting) {
+        QTextStream(stderr) << "Unknown Aero7 setting: " << requestedSetting
+                            << Qt::endl;
+        return 2;
+    }
+
+    if (setting) {
+        const LinkTarget target = SettingsCatalog::targetForSetting(*setting);
+        if (target.kind == LinkTarget::Command && !target.command.isEmpty()) {
+            const bool started = QProcess::startDetached(
+                target.command.first(), target.command.mid(1));
+            return started ? 0 : 3;
+        }
+    }
+
+    Aero7::applyApplicationStyle(&app);
+    new ScrollBarUnstyler(&app);   // native scroll bars; owned by the app
 
     MainWindow w;
     const QString requestedPage = parser.value(pageOption);
@@ -118,5 +171,11 @@ int main(int argc, char *argv[]) {
         w.openPage(PageId::GettingStarted);
     }
     w.show();
+    if (setting) {
+        const QString settingKey = setting->key;
+        QTimer::singleShot(0, &w, [&w, settingKey]() {
+            w.openSetting(settingKey);
+        });
+    }
     return app.exec();
 }

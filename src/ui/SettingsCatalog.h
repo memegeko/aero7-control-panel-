@@ -60,6 +60,7 @@ struct SettingDefinition {
 namespace SettingsCatalog {
 
 const QList<SettingDefinition> &all();
+const SettingDefinition *findByKey(const QString &key);
 QList<SettingDefinition> forSection(SettingsSection section);
 QString sectionTitle(SettingsSection section);
 QString sectionDescription(SettingsSection section);

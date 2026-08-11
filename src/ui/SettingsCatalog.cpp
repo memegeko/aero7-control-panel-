@@ -247,6 +247,16 @@ const QList<SettingDefinition> &all()
     return entries;
 }
 
+const SettingDefinition *findByKey(const QString &key)
+{
+    const QString normalized = key.trimmed();
+    for (const SettingDefinition &entry : all()) {
+        if (entry.key.compare(normalized, Qt::CaseInsensitive) == 0)
+            return &entry;
+    }
+    return nullptr;
+}
+
 QList<SettingDefinition> forSection(SettingsSection section)
 {
     QList<SettingDefinition> out;
