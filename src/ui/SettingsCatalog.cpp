@@ -191,6 +191,13 @@ const QList<SettingDefinition> &all()
             "Choose spell-check dictionaries and options.", "tools-check-spelling"),
 
         // Applications and file behavior
+        {QStringLiteral("get-programs"), QStringLiteral("Get Programs"),
+         QStringLiteral("Software Management"), QString(),
+         SettingsSection::Applications,
+         QStringLiteral("Find and install software for Aero7."),
+         QStringLiteral("system-software-install"),
+         SettingsBackend::ExternalCommand, ReplacementStatus::Native,
+         PageId::None, QString(), kProgramsCenterCmd},
         kde("default-apps", "Default Programs", "Default Applications", "kcm_componentchooser", SettingsSection::Applications,
             "Choose the default browser, mail, terminal and other programs.", "preferences-desktop-default-applications"),
         kde("file-associations", "File Type Associations", "File Associations", "kcm_filetypes", SettingsSection::Applications,

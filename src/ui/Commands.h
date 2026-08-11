@@ -33,3 +33,9 @@ inline const QStringList kGetWidgetsCmd = {
 inline const QStringList kDeviceManagerCmd = {
     QStringLiteral("devmgmt")
 };
+
+// Programs Center is independently packaged and optional. Launching by name
+// keeps Control Panel usable when the testing package is not installed.
+inline const QStringList kProgramsCenterCmd = {
+    QStringLiteral("aero7-programs-center")
+};
